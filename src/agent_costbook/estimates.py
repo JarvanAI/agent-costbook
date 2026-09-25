@@ -18,7 +18,14 @@ USAGE_TO_RATE = {
 ALLOWED_USAGE = set(USAGE_TO_RATE) | {"reasoning"}
 MILLION = Decimal("1000000")
 _PLAIN_DECIMAL = re.compile(r"^(?:0|[1-9]\d*)(?:\.\d+)?$")
-_FORMULAS = {"M0": "m0-v1", "M4": "m4-v1"}
+_FORMULAS = {
+    "M0": "m0-v1",
+    "M1": "m1-v1",
+    "M2": "m2-v1",
+    "M4": "m4-v1",
+    "M6": "m6-v1",
+}
+_SUBSCRIPTION_METHODS = {"M1", "M2", "M6"}
 
 
 def parse_decimal(value: object) -> Decimal | None:
@@ -91,6 +98,337 @@ def _effective_rates(record: dict, private_rates: dict | None, result: dict) -> 
     return rates
 
 
+def _mark_missing(result: dict, fields: list[str]) -> dict:
+    result["status"] = "missing_data"
+    result["metrics"] = None
+    result["units"] = None
+    result["missing_fields"] = fields
+    return result
+
+
+def _read_amount(raw: object, *, low: Decimal, high: Decimal | None, greater_than: bool) -> tuple[Decimal | None, str]:
+    if raw is None:
+        return None, "missing"
+    number = parse_decimal(raw)
+    if number is None:
+        return None, "invalid"
+    if greater_than:
+        if number <= low:
+            return None, "invalid"
+    elif number < low:
+        return None, "invalid"
+    if high is not None and number > high:
+        return None, "invalid"
+    return number, "ok"
+
+
+def _cash_increment(result: dict, marginal_cash: str | None) -> str | None | object:
+    if marginal_cash is None:
+        result["missing_fields"].append("cash_increment")
+        return None
+    number = parse_decimal(marginal_cash)
+    if number is None or number < 0:
+        return _invalid(result)
+    result["assumptions"].append("request_marginal_cash")
+    return money_text(number)
+
+
+def _finish_subscription(
+    result: dict,
+    *,
+    currency: str,
+    method: str,
+    metrics: dict,
+    cash: str | None,
+    quota: Decimal | None,
+    api_equivalent: Decimal | None,
+) -> dict:
+    if cash is not None:
+        metrics["cash_increment"] = cash
+    if quota is not None:
+        metrics["quota_metric"] = money_text(quota)
+    if api_equivalent is not None:
+        metrics["api_equivalent"] = money_text(api_equivalent)
+    elif "api_equivalent" not in result["missing_fields"]:
+        result["missing_fields"].append("api_equivalent")
+    result["metrics"] = metrics
+    per = f"{currency}_per_quota_unit" if method == "M1" else f"{currency}_per_task"
+    units = {"K": per, "amortization": per}
+    if "N" in metrics:
+        units["N"] = "tasks"
+    if "quota_metric" in metrics:
+        units["quota_metric"] = "quota_multiplier"
+    if "api_equivalent" in metrics:
+        units["api_equivalent"] = f"{currency}_per_task"
+    if "cash_increment" in metrics:
+        units["cash_increment"] = currency
+    result["units"] = units
+    return result
+
+
+def _evaluate_subscription(
+    result: dict,
+    method: str,
+    record: dict,
+    marginal_cash: str | None,
+    scenario_notes: list[str],
+) -> dict:
+    subscription = dict(record.get("subscription") or {})
+    result["formula_version"] = _FORMULAS[method]
+    for note in scenario_notes:
+        if note not in result["assumptions"]:
+            result["assumptions"].append(note)
+    required = {
+        "M1": ("monthly_price", "quota_multiplier"),
+        "M2": ("monthly_price",),
+        "M6": (
+            "monthly_price",
+            "quota_multiplier",
+            "baseline_api_budget",
+            "utilization",
+            "cost_per_task",
+            "weight",
+        ),
+    }[method]
+    rules = {
+        "monthly_price": (Decimal("0"), None, False),
+        "quota_multiplier": (Decimal("0"), None, True),
+        "baseline_tasks": (Decimal("0"), None, False),
+        "measured_tasks": (Decimal("0"), None, False),
+        "baseline_api_budget": (Decimal("0"), None, True),
+        "utilization": (Decimal("0"), Decimal("1"), False),
+        "cost_per_task": (Decimal("0"), None, True),
+        "weight": (Decimal("0"), None, True),
+    }
+    values: dict[str, Decimal] = {}
+    missing: list[str] = []
+    for key, (low, high, greater) in rules.items():
+        if key not in subscription or subscription.get(key) is None:
+            if key in required:
+                missing.append(key)
+            continue
+        number, state = _read_amount(subscription.get(key), low=low, high=high, greater_than=greater)
+        if state == "invalid":
+            return _invalid(result)
+        if number is not None:
+            values[key] = number
+    measured = values.get("measured_tasks")
+    if method == "M2" and measured is None:
+        for key in ("quota_multiplier", "baseline_tasks", "utilization"):
+            if key not in values and key not in missing:
+                missing.append(key)
+    if missing:
+        return _mark_missing(result, missing)
+
+    cash = _cash_increment(result, marginal_cash)
+    if result["status"] == "invalid_input":
+        return result
+    price = values["monthly_price"]
+    multiplier = values.get("quota_multiplier")
+    api_equivalent = values.get("cost_per_task")
+
+    if method == "M1":
+        divisor = values["quota_multiplier"]
+        cost = price / divisor
+        if price == 0:
+            result["assumptions"].append("explicit_zero_price")
+        return _finish_subscription(
+            result,
+            currency=record["currency"],
+            method=method,
+            metrics={"K": money_text(cost), "amortization": money_text(cost)},
+            cash=cash if isinstance(cash, str) else None,
+            quota=divisor,
+            api_equivalent=api_equivalent,
+        )
+    if method == "M2" and measured is not None:
+        task_count = measured
+        result["assumptions"].append("measured_n_not_rescaled_by_utilization")
+    elif method == "M2":
+        task_count = values["quota_multiplier"] * values["baseline_tasks"] * values["utilization"]
+    else:
+        if values["utilization"] == 0:
+            result["status"] = "no_capacity"
+            return _finish_subscription(
+                result,
+                currency=record["currency"],
+                method=method,
+                metrics={"N": "0", "K": None, "amortization": None},
+                cash=cash if isinstance(cash, str) else None,
+                quota=multiplier,
+                api_equivalent=api_equivalent,
+            )
+        task_count = (
+            values["quota_multiplier"]
+            * values["baseline_api_budget"]
+            * values["utilization"]
+            / values["cost_per_task"]
+        )
+    if task_count == 0:
+        result["status"] = "no_capacity"
+        return _finish_subscription(
+            result,
+            currency=record["currency"],
+            method=method,
+            metrics={"N": "0", "K": None, "amortization": None},
+            cash=cash if isinstance(cash, str) else None,
+            quota=multiplier,
+            api_equivalent=api_equivalent,
+        )
+    if method == "M6":
+        cost = (
+            price
+            * values["cost_per_task"]
+            / (
+                values["quota_multiplier"]
+                * values["baseline_api_budget"]
+                * values["utilization"]
+                * values["weight"]
+            )
+        )
+    else:
+        cost = price / task_count
+    if price == 0:
+        result["assumptions"].append("explicit_zero_price")
+    return _finish_subscription(
+        result,
+        currency=record["currency"],
+        method=method,
+        metrics={
+            "N": money_text(task_count),
+            "K": money_text(cost),
+            "amortization": money_text(cost),
+        },
+        cash=cash if isinstance(cash, str) else None,
+        quota=multiplier,
+        api_equivalent=api_equivalent,
+    )
+
+
+def apply_scenario(
+    record: dict | None,
+    reference_record: dict | None,
+    scenario: dict | None,
+) -> tuple[dict | None, list[str]]:
+    if record is None:
+        return None, []
+    subscription = dict(record.get("subscription") or {})
+    if (
+        not scenario
+        or reference_record is None
+        or reference_record.get("id") == record.get("id")
+    ):
+        return subscription, []
+    reference = reference_record.get("subscription") or {}
+    notes: list[str] = []
+    if scenario.get("equal_baseline_budget") and not subscription.get("baseline_api_budget"):
+        borrowed = reference.get("baseline_api_budget")
+        if borrowed:
+            subscription["baseline_api_budget"] = borrowed
+            notes.append("assumed_equal_baseline_budget")
+    if (
+        scenario.get("equal_baseline_tasks")
+        and not subscription.get("baseline_tasks")
+        and not subscription.get("measured_tasks")
+    ):
+        borrowed = reference.get("baseline_tasks")
+        if borrowed:
+            subscription["baseline_tasks"] = borrowed
+            notes.append("assumed_equal_baseline_tasks")
+    return subscription, notes
+
+
+def _comparison_match(method: str, left: dict, right: dict, allow_cross_provider: bool) -> bool:
+    if not left.get("currency") or left["currency"] != right.get("currency"):
+        return False
+    if left["feature_scope"] != right["feature_scope"]:
+        return False
+    if (left["window_start"], left["window_end"]) != (right["window_start"], right["window_end"]):
+        return False
+    if method == "M1":
+        return left["provider"] == right["provider"]
+    if left["model"] != right["model"] or left["effort"] != right["effort"]:
+        return False
+    if left["task_profile"] != right["task_profile"]:
+        return False
+    if left["provider"] != right["provider"] and not allow_cross_provider:
+        return False
+    return True
+
+
+def apply_reference_comparison(
+    method: str,
+    results: list[dict],
+    contexts: list[dict],
+    *,
+    reference_candidate_id: str,
+    allow_cross_provider: bool = False,
+) -> list[dict]:
+    copied: list[dict] = []
+    for result in results:
+        item = dict(result)
+        item["assumptions"] = list(item.get("assumptions") or [])
+        if isinstance(item.get("metrics"), dict):
+            item["metrics"] = dict(item["metrics"])
+        if isinstance(item.get("units"), dict):
+            item["units"] = dict(item["units"])
+        copied.append(item)
+    reference_index = next(
+        (
+            index
+            for index, item in enumerate(copied)
+            if item["candidate_id"] == reference_candidate_id
+        ),
+        None,
+    )
+    if reference_index is None or len(copied) != len(contexts):
+        return copied
+    reference = copied[reference_index]
+    reference_context = contexts[reference_index]
+    rankable = reference["status"] == "ok" and _numeric_k(reference) is not None
+    reference_k = _numeric_k(reference)
+    for index, (item, context) in enumerate(zip(copied, contexts)):
+        if index == reference_index:
+            continue
+        matched = _comparison_match(method, context, reference_context, allow_cross_provider)
+        if item["status"] != "ok" or not matched or _numeric_k(item) is None:
+            rankable = False
+        if not matched:
+            if "not_comparable" not in item["assumptions"]:
+                item["assumptions"].append("not_comparable")
+            continue
+        if item["status"] != "ok" or not isinstance(item.get("metrics"), dict):
+            continue
+        if reference_k is None or reference_k <= 0:
+            if "reference_ratio_unavailable" not in item["assumptions"]:
+                item["assumptions"].append("reference_ratio_unavailable")
+            continue
+        candidate_k = _numeric_k(item)
+        if candidate_k is None:
+            continue
+        item["metrics"]["cost_ratio"] = money_text(candidate_k / reference_k)
+        if isinstance(item.get("units"), dict):
+            item["units"]["cost_ratio"] = "ratio"
+    if rankable:
+        order = sorted(
+            range(len(copied)),
+            key=lambda index: (_numeric_k(copied[index]) or Decimal("0"), copied[index]["candidate_id"]),
+        )
+        for rank, index in enumerate(order, start=1):
+            copied[index]["rank"] = rank
+    return copied
+
+
+def _numeric_k(result: dict) -> Decimal | None:
+    metrics = result.get("metrics")
+    if not isinstance(metrics, dict):
+        return None
+    value = metrics.get("K")
+    if not isinstance(value, str):
+        return None
+    return parse_decimal(value)
+
+
 def evaluate_candidate(
     *,
     candidate_id: str,
@@ -101,6 +439,9 @@ def evaluate_candidate(
     private_rates: dict | None,
     record: dict | None,
     conflict: bool,
+    marginal_cash: str | None = None,
+    subscription_override: dict | None = None,
+    scenario_notes: list[str] | None = None,
 ) -> dict:
     result = _result(candidate_id, method, record)
     if method not in _FORMULAS:
@@ -118,6 +459,20 @@ def evaluate_candidate(
         return result
     if currency and currency != record.get("currency"):
         return _invalid(result, "currency_conversion_refused")
+    if method in _SUBSCRIPTION_METHODS:
+        working = dict(record)
+        if subscription_override is not None:
+            working["subscription"] = {
+                **dict(record.get("subscription") or {}),
+                **subscription_override,
+            }
+        return _evaluate_subscription(
+            result,
+            method,
+            working,
+            marginal_cash,
+            scenario_notes or [],
+        )
 
     rates = _effective_rates(record, private_rates, result)
     if result["status"] == "invalid_input":

@@ -5,7 +5,11 @@ import hmac
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse
 
-from agent_costbook.estimates import evaluate_candidate
+from agent_costbook.estimates import (
+    apply_reference_comparison,
+    apply_scenario,
+    evaluate_candidate,
+)
 from agent_costbook.models import ContributionIn, EstimateIn
 from agent_costbook.settings import Settings, load_settings
 from agent_costbook.store import Store, StoreError
@@ -37,7 +41,7 @@ def _public_record(record: dict) -> dict:
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or load_settings()
     store = Store(resolved.db_path)
-    app = FastAPI(title="agent-costbook", version="0.1.0")
+    app = FastAPI(title="agent-costbook", version="0.2.0")
     app.state.store = store
     app.state.settings = resolved
 
@@ -121,7 +125,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=404, detail="snapshot not found")
         pinned = body.snapshot_id if body.snapshot_id is not None else store.latest_snapshot_id()
         frozen_snapshot = pinned if pinned is not None else _FROZEN_EMPTY_SNAPSHOT
-        results = []
+        selected = []
         for candidate in body.candidates:
             selection = store.select_record(
                 provider=candidate.provider,
@@ -135,6 +139,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 currency=body.currency,
                 snapshot_id=frozen_snapshot,
             )
+            selected.append((candidate, selection))
+        reference_record = None
+        if body.reference_candidate_id:
+            for candidate, selection in selected:
+                if candidate.candidate_id == body.reference_candidate_id:
+                    reference_record = selection.record
+        scenario = body.scenario.model_dump() if body.scenario is not None else None
+        results = []
+        contexts = []
+        for candidate, selection in selected:
+            subscription, notes = apply_scenario(
+                selection.record,
+                reference_record,
+                scenario,
+            )
             private = None
             if candidate.private_rates is not None:
                 private = candidate.private_rates.model_dump(exclude_none=True)
@@ -147,11 +166,44 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 private_rates=private or None,
                 record=selection.record,
                 conflict=selection.conflict,
+                marginal_cash=candidate.marginal_cash,
+                subscription_override=subscription,
+                scenario_notes=notes,
             )
             result["record_snapshot_id"] = result["snapshot_id"] if selection.record else None
             if result["status"] != "unsupported_method":
                 result["snapshot_id"] = pinned
+            record = selection.record or {}
+            stored = record.get("subscription") or {}
+            contexts.append(
+                {
+                    "candidate_id": candidate.candidate_id,
+                    "provider": record.get("provider", candidate.provider),
+                    "feature_scope": record.get("feature_scope", candidate.feature_scope),
+                    "window_start": record.get("window_start") or "",
+                    "window_end": record.get("window_end") or "",
+                    "currency": record.get("currency"),
+                    "model": record.get("model", candidate.model),
+                    "effort": record.get("effort", candidate.effort),
+                    "task_profile": stored.get("task_profile") or "",
+                }
+            )
             results.append(result)
+        if body.reference_candidate_id:
+            allow_cross_provider = bool(
+                scenario
+                and (
+                    scenario.get("equal_baseline_budget")
+                    or scenario.get("equal_baseline_tasks")
+                )
+            )
+            results = apply_reference_comparison(
+                body.method,
+                results,
+                contexts,
+                reference_candidate_id=body.reference_candidate_id,
+                allow_cross_provider=allow_cross_provider,
+            )
         return {"results": results}
 
     return app

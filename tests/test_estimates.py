@@ -102,11 +102,20 @@ def test_reasoning_larger_than_billed_output_is_invalid_usage():
 
 
 def test_unimplemented_methods_are_unsupported():
-    for method in ("M1", "M2", "M3", "M5", "M6", "M7", "M9"):
+    for method in ("M3", "M5", "M7", "M9"):
         result = _run(method=method)
         assert result["status"] == "unsupported_method"
         assert result["metrics"] is None
         assert result["formula_version"] is None
+
+
+def test_subscription_methods_do_not_invent_values_for_api_rates():
+    for method in ("M1", "M2", "M6"):
+        result = _run(method=method)
+        assert result["status"] == "missing_data"
+        assert result["metrics"] is None
+        assert result["metrics"] != {"K": "0"}
+        assert result["metrics"] != {"K": "1"}
 
 
 def test_omitted_usage_with_zero_extra_cost_is_missing_not_free():

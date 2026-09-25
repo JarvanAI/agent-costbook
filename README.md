@@ -1,9 +1,10 @@
 # agent-costbook
 
-Local service for traceable AI model pricing and per-task API cost estimates.
-Version 0.1 stores evidence, research Markdown, and structured rates in SQLite,
-then calculates M0 display and M4 task cost. M1, M2, M3, M5, M6, and M7 respond
-with `unsupported_method`.
+Local service for traceable AI model pricing, subscription amortization, and
+per-task API cost estimates. Version 0.2 stores evidence, research Markdown,
+API rates, and subscription inputs in SQLite. It calculates M0 display, M1
+quota price, M2 task amortization, M4 task cost, and M6 budget amortization.
+M3, M5, and M7 respond with `unsupported_method`.
 
 Design notes live in `.docs/`, which is outside this product Git history.
 
@@ -18,8 +19,18 @@ uv run uvicorn agent_costbook.api:create_app --factory --host 127.0.0.1 --port 8
 
 Keep the bind address on `127.0.0.1`. Writes require `Authorization: Bearer $ACB_ADMIN_TOKEN`.
 Money and token amounts are JSON decimal strings. An unknown rate is omitted, not stored as 0.
-An unknown multiplier is not filled with 1. Request field `private_rates` changes only that
-estimate and is not written to the catalog.
+An unknown multiplier, baseline budget, or utilization is not filled with 1. Request fields
+`private_rates` and `marginal_cash` change only that estimate and are not written to the catalog.
+Cash, amortization, API-equivalent cost, and quota are separate metrics and are not added together.
+
+With the service stopped, export one published catalog. Repeat exports of the same database
+are byte-identical. `snap-<data_version>` reads that published catalog; the original `snap_<uuid>`
+id still works. An unknown or unsafe version exits non-zero and prints no catalog.
+
+```sh
+uv run agent-costbook-export --db agent_costbook.sqlite3
+uv run agent-costbook-export --db agent_costbook.sqlite3 --data-version 1
+```
 
 ## HTTP
 

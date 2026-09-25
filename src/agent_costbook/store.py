@@ -2,12 +2,30 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sqlite3
 import threading
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+
+FORMULA_SET = "ac-formulas-v1"
+MAX_SAFE_INT = 9007199254740991
+_PUBLIC_SNAPSHOT = re.compile(r"^snap-([1-9][0-9]*)$")
+_SUBSCRIPTION_KEYS = (
+    "monthly_price",
+    "price_period",
+    "quota_multiplier",
+    "baseline_tasks",
+    "measured_tasks",
+    "baseline_api_budget",
+    "utilization",
+    "cost_per_task",
+    "weight",
+    "task_profile",
+    "assumptions",
+)
 
 
 def _locked(method):
@@ -36,6 +54,17 @@ def _now() -> str:
 
 def _canonical(payload: dict) -> str:
     return json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _subscription_payload(item: dict) -> dict:
+    raw = item.get("subscription") or {}
+    kept = {}
+    for key in _SUBSCRIPTION_KEYS:
+        value = raw.get(key)
+        if value is None or value == []:
+            continue
+        kept[key] = value
+    return kept
 
 
 def _identity(row: dict) -> tuple:
@@ -99,7 +128,8 @@ class Store:
                 id TEXT PRIMARY KEY,
                 contribution_id TEXT NOT NULL,
                 published_at TEXT NOT NULL,
-                revision INTEGER NOT NULL
+                revision INTEGER NOT NULL,
+                formula_version TEXT
             );
             CREATE TABLE IF NOT EXISTS records (
                 id TEXT PRIMARY KEY,
@@ -116,11 +146,39 @@ class Store:
                 currency TEXT NOT NULL,
                 rates_json TEXT NOT NULL,
                 evidence_ids_json TEXT NOT NULL,
-                base_snapshot_id TEXT NOT NULL
+                base_snapshot_id TEXT NOT NULL,
+                subscription_json TEXT
+            );
+            CREATE TABLE IF NOT EXISTS publisher_identity (
+                singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
+                publisher_id TEXT NOT NULL
             );
             """
         )
+        self._add_column("snapshots", "formula_version", "TEXT")
+        self._add_column("records", "subscription_json", "TEXT")
+        self._conn.execute(
+            """
+            UPDATE snapshots
+            SET formula_version = ?
+            WHERE formula_version IS NULL
+            """,
+            (FORMULA_SET,),
+        )
+        existing = self._conn.execute(
+            "SELECT publisher_id FROM publisher_identity WHERE singleton = 1"
+        ).fetchone()
+        if existing is None:
+            self._conn.execute(
+                "INSERT INTO publisher_identity (singleton, publisher_id) VALUES (1, ?)",
+                (f"pub_{uuid.uuid4().hex}",),
+            )
         self._conn.commit()
+
+    def _add_column(self, table: str, column: str, definition: str) -> None:
+        present = {row[1] for row in self._conn.execute(f"PRAGMA table_info({table})")}
+        if column not in present:
+            self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def create_contribution(self, payload: dict, idempotency_key: str | None) -> tuple[dict, bool]:
         digest = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
@@ -175,6 +233,7 @@ class Store:
                         "rates": rates,
                         "evidence_ids": evidence_ids,
                         "base_snapshot_id": item.get("base_snapshot_id") or "",
+                        "subscription": _subscription_payload(item),
                     }
                 )
             response = {
@@ -237,8 +296,8 @@ class Store:
                     INSERT INTO records (
                         id, contribution_id, snapshot_id, provider, channel, model, effort,
                         plan, feature_scope, window_start, window_end, currency,
-                        rates_json, evidence_ids_json, base_snapshot_id
-                    ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        rates_json, evidence_ids_json, base_snapshot_id, subscription_json
+                    ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
@@ -256,6 +315,7 @@ class Store:
                             json.dumps(row["rates"], ensure_ascii=False, sort_keys=True),
                             json.dumps(row["evidence_ids"]),
                             row["base_snapshot_id"],
+                            json.dumps(row["subscription"], ensure_ascii=False, sort_keys=True),
                         )
                         for row in record_rows
                     ],
@@ -321,10 +381,11 @@ class Store:
                 ).fetchone()[0]
                 self._conn.execute(
                     """
-                    INSERT INTO snapshots (id, contribution_id, published_at, revision)
-                    VALUES (?, ?, ?, ?)
+                    INSERT INTO snapshots (
+                        id, contribution_id, published_at, revision, formula_version
+                    ) VALUES (?, ?, ?, ?, ?)
                     """,
-                    (snapshot_id, contribution_id, published_at, revision),
+                    (snapshot_id, contribution_id, published_at, revision, FORMULA_SET),
                 )
                 self._conn.execute(
                     "UPDATE records SET snapshot_id = ? WHERE contribution_id = ?",
@@ -424,13 +485,72 @@ class Store:
         ).fetchone()
         return None if row is None else row["id"]
 
+    def close(self) -> None:
+        self._conn.close()
+
     @_locked
-    def snapshot_exists(self, snapshot_id: str) -> bool:
+    def publisher_id(self) -> str:
         row = self._conn.execute(
-            "SELECT 1 FROM snapshots WHERE id = ?",
+            "SELECT publisher_id FROM publisher_identity WHERE singleton = 1"
+        ).fetchone()
+        return row["publisher_id"]
+
+    def _resolve_snapshot(self, snapshot_id: str) -> sqlite3.Row | None:
+        match = _PUBLIC_SNAPSHOT.fullmatch(snapshot_id)
+        if match:
+            version = int(match.group(1))
+            if version > MAX_SAFE_INT:
+                return None
+            return self._conn.execute(
+                "SELECT * FROM snapshots WHERE revision = ?",
+                (version,),
+            ).fetchone()
+        return self._conn.execute(
+            "SELECT * FROM snapshots WHERE id = ?",
             (snapshot_id,),
         ).fetchone()
-        return row is not None
+
+    @_locked
+    def snapshot_exists(self, snapshot_id: str) -> bool:
+        return self._resolve_snapshot(snapshot_id) is not None
+
+    @_locked
+    def snapshot_for_export(self, data_version: int | None) -> sqlite3.Row | None:
+        if data_version is None:
+            return self._conn.execute(
+                "SELECT * FROM snapshots ORDER BY revision DESC LIMIT 1"
+            ).fetchone()
+        if data_version < 1 or data_version > MAX_SAFE_INT:
+            return None
+        return self._conn.execute(
+            "SELECT * FROM snapshots WHERE revision = ?",
+            (data_version,),
+        ).fetchone()
+
+    @_locked
+    def evidence_metadata(self, evidence_ids: list[str]) -> dict[str, dict]:
+        if not evidence_ids:
+            return {}
+        placeholders = ",".join("?" for _ in evidence_ids)
+        rows = self._conn.execute(
+            f"""
+            SELECT id, source_kind, source_url, collector_kind, collector_name, retrieved_at
+            FROM evidence
+            WHERE id IN ({placeholders})
+            """,
+            evidence_ids,
+        ).fetchall()
+        return {
+            row["id"]: {
+                "kind": row["source_kind"],
+                "id": row["id"],
+                "source_url": row["source_url"],
+                "collector_kind": row["collector_kind"],
+                "collector_name": row["collector_name"],
+                "retrieved_at": row["retrieved_at"],
+            }
+            for row in rows
+        }
 
     @_locked
     def catalog(self, snapshot_id: str | None) -> list[dict]:
@@ -493,10 +613,7 @@ class Store:
         """
         params: tuple = ()
         if snapshot_id is not None:
-            target = self._conn.execute(
-                "SELECT revision FROM snapshots WHERE id = ?",
-                (snapshot_id,),
-            ).fetchone()
+            target = self._resolve_snapshot(snapshot_id)
             if target is None:
                 return []
             query += " WHERE snapshots.revision <= ?"
@@ -516,7 +633,10 @@ class Store:
         research_id = row["research_id"] if "research_id" in keys else None
         revision = row["revision"] if "revision" in keys else 0
         base_snapshot_id = row["base_snapshot_id"] if "base_snapshot_id" in keys else ""
-        return {
+        subscription = {}
+        if "subscription_json" in keys and row["subscription_json"]:
+            subscription = json.loads(row["subscription_json"])
+        record = {
             "id": row["id"],
             "contribution_id": row["contribution_id"],
             "snapshot_id": row["snapshot_id"],
@@ -536,3 +656,6 @@ class Store:
             "revision": revision,
             "base_snapshot_id": base_snapshot_id,
         }
+        if subscription:
+            record["subscription"] = subscription
+        return record

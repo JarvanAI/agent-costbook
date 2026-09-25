@@ -1,6 +1,6 @@
 ---
 name: costbook-contribute
-description: Contribute a public pricing observation to a local agent-costbook v0.1 service. Use when an existing agent has already retrieved a source and needs to submit evidence, research Markdown, and structured rates through the HTTP API.
+description: Contribute a public pricing or subscription observation to a local agent-costbook service. Use when an existing agent has already retrieved a source and needs to submit evidence, research Markdown, and structured rates or subscription inputs through the HTTP API.
 ---
 
 # Contribute to agent-costbook
@@ -9,11 +9,11 @@ The service does not research for you. Retrieve the public source yourself, then
 
 ## Before writing
 
-1. Confirm the service is the local v0.1 process on `127.0.0.1`.
+1. Confirm the service is the local process on `127.0.0.1`.
 2. Read the source URL yourself. Keep an excerpt, not a whole site.
 3. Record `source_kind` separately from `collector_kind` and `collector_name`.
 4. Convert the source units explicitly. OpenRouter's USD-per-token prices become USD per million tokens by multiplying by 1000000.
-5. Omit any rate the source does not state. Do not store 0 for an unknown price or 1 for an unknown multiplier.
+5. Omit any rate or subscription input the source does not state. Do not store 0 for an unknown price or 1 for an unknown multiplier, baseline budget, or utilization. A subscription record may include `subscription.monthly_price`, `price_period`, `quota_multiplier`, `baseline_tasks`, `measured_tasks`, `baseline_api_budget`, `utilization`, `cost_per_task`, `weight`, and `task_profile`.
 6. Leave `effort` empty when the source does not name one, and do not reuse that record for another effort.
 7. Keep evidence and research Markdown at or below 256 KiB each.
 
@@ -56,4 +56,4 @@ curl -sS -X POST "http://127.0.0.1:8080/v1/estimates" \
   -d '{"method":"M4","currency":"USD","usage":{"uncached_input":"1000","billed_output":"400"},"extra_cost":"0","candidates":[{"candidate_id":"example","provider":"openai","channel":"openrouter","model":"openai/gpt-4o-mini","plan":"payg","feature_scope":"text"}]}'
 ```
 
-`private_rates` on a candidate overrides that request only. Read the catalog afterward and confirm the stored rate did not change. M0 returns the stored rates. M1, M2, M3, M5, M6, and M7 return `unsupported_method`. Pass `snapshot_id` to recalculate against an older published snapshot.
+`private_rates` on a candidate overrides that request only. Read the catalog afterward and confirm the stored rate did not change. M0 returns the stored rates. M1 is `monthly_price / quota_multiplier` inside one provider, feature scope, and window. M2 amortizes price over `quota_multiplier * baseline_tasks * utilization`, unless `measured_tasks` is present, in which case that count is not multiplied by utilization again. M6 amortizes price over the API-equivalent task count `quota_multiplier * baseline_api_budget * utilization / cost_per_task`, with `weight` applied only to the cost. Set `reference_candidate_id` to compare against an explicit candidate. M3, M5, and M7 return `unsupported_method`. Pass `snapshot_id` to recalculate against an older published snapshot. `marginal_cash` is optional and is not inferred as 0.

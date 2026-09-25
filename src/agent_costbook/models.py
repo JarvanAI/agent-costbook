@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from decimal import Decimal
+
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from agent_costbook.estimates import RATE_KEYS, parse_decimal
@@ -42,6 +44,46 @@ class RateCard(BaseModel):
         return self
 
 
+class SubscriptionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    monthly_price: str | None = None
+    price_period: str | None = Field(default=None, max_length=32)
+    quota_multiplier: str | None = None
+    baseline_tasks: str | None = None
+    measured_tasks: str | None = None
+    baseline_api_budget: str | None = None
+    utilization: str | None = None
+    cost_per_task: str | None = None
+    weight: str | None = None
+    task_profile: str | None = Field(default=None, max_length=120)
+    assumptions: list[str] = Field(default_factory=list, max_length=20)
+
+    @model_validator(mode="after")
+    def amounts_are_in_range(self) -> SubscriptionIn:
+        bounds = {
+            "monthly_price": (Decimal("0"), None, False),
+            "quota_multiplier": (Decimal("0"), None, True),
+            "baseline_tasks": (Decimal("0"), None, False),
+            "measured_tasks": (Decimal("0"), None, False),
+            "baseline_api_budget": (Decimal("0"), None, True),
+            "utilization": (Decimal("0"), Decimal("1"), False),
+            "cost_per_task": (Decimal("0"), None, True),
+            "weight": (Decimal("0"), None, True),
+        }
+        for key, (low, high, greater) in bounds.items():
+            raw = getattr(self, key)
+            if raw is None:
+                continue
+            number = parse_decimal(raw)
+            if number is None:
+                raise ValueError(f"{key} must be a finite decimal string")
+            if greater and number <= low or not greater and number < low:
+                raise ValueError(f"{key} is outside its allowed range")
+            if high is not None and number > high:
+                raise ValueError(f"{key} is outside its allowed range")
+        return self
+
+
 class RecordIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     provider: str = Field(min_length=1, max_length=120)
@@ -56,6 +98,7 @@ class RecordIn(BaseModel):
     rates: RateCard
     evidence_indexes: list[int] = Field(min_length=1)
     base_snapshot_id: str | None = Field(default=None, max_length=80)
+    subscription: SubscriptionIn | None = None
 
 
 class ContributionIn(BaseModel):
@@ -85,6 +128,23 @@ class CandidateIn(BaseModel):
     window_start: str | None = Field(default=None, max_length=64)
     window_end: str | None = Field(default=None, max_length=64)
     private_rates: RateCard | None = None
+    marginal_cash: str | None = None
+
+    @field_validator("marginal_cash")
+    @classmethod
+    def marginal_cash_is_non_negative(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        number = parse_decimal(value)
+        if number is None or number < 0:
+            raise ValueError("marginal_cash must be a finite non-negative decimal string")
+        return value
+
+
+class ScenarioIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    equal_baseline_budget: bool = False
+    equal_baseline_tasks: bool = False
 
 
 class EstimateIn(BaseModel):
@@ -94,6 +154,8 @@ class EstimateIn(BaseModel):
     currency: str | None = Field(default=None, max_length=12)
     usage: dict[str, str] | None = None
     extra_cost: str | None = None
+    reference_candidate_id: str | None = Field(default=None, max_length=160)
+    scenario: ScenarioIn | None = None
     candidates: list[CandidateIn] = Field(min_length=1)
 
     @field_validator("usage")
@@ -104,3 +166,16 @@ class EstimateIn(BaseModel):
         if any(not isinstance(item, str) for item in value.values()):
             raise ValueError("usage values must be decimal strings")
         return value
+
+    @model_validator(mode="after")
+    def reference_matches_one_candidate(self) -> EstimateIn:
+        if self.reference_candidate_id is None:
+            return self
+        matches = [
+            candidate.candidate_id
+            for candidate in self.candidates
+            if candidate.candidate_id == self.reference_candidate_id
+        ]
+        if len(matches) != 1:
+            raise ValueError("reference_candidate_id must match exactly one candidate")
+        return self

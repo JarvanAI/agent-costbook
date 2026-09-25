@@ -1,3 +1,4 @@
+import json
 import os
 import socket
 import subprocess
@@ -334,3 +335,117 @@ def test_real_http_review_boundaries(tmp_path):
             assert active["second-card"] == "2"
     finally:
         _stop(proc)
+
+
+def _plan(model: str, multiplier: str, feature_scope: str = "code") -> dict:
+    payload = synthetic_contribution()
+    payload["records"][0].update(
+        {
+            "channel": "subscription",
+            "model": model,
+            "effort": "high",
+            "plan": f"plan-{multiplier}",
+            "feature_scope": feature_scope,
+            "rates": {},
+            "subscription": {
+                "monthly_price": "20",
+                "price_period": "month",
+                "quota_multiplier": multiplier,
+                "baseline_api_budget": "100",
+                "utilization": "0.5",
+                "cost_per_task": "0.5",
+                "weight": "1",
+                "task_profile": "coding",
+            },
+        }
+    )
+    return payload
+
+
+def test_real_http_m6_ratio_then_stopped_export(tmp_path):
+    db = tmp_path / "m6.sqlite3"
+    port = _free_port()
+    base = f"http://127.0.0.1:{port}"
+    headers = {"Authorization": "Bearer e2e-token"}
+    proc = _start(db, port)
+    try:
+        with _client(base) as client:
+            _wait_health(client, proc)
+            for key, payload in (
+                ("base", _plan("example-model", "1")),
+                ("higher", _plan("example-model", "2")),
+                ("image", _plan("example-model", "9", "image")),
+            ):
+                created = client.post(
+                    "/v1/contributions",
+                    headers={**headers, "Idempotency-Key": key},
+                    json=payload,
+                )
+                assert created.status_code == 201, created.text
+                published = client.post(
+                    f"/v1/contributions/{created.json()['contribution_id']}/publish",
+                    headers=headers,
+                )
+                assert published.status_code == 200, published.text
+            estimate = client.post(
+                "/v1/estimates",
+                json={
+                    "method": "M6",
+                    "currency": "USD",
+                    "reference_candidate_id": "base",
+                    "candidates": [
+                        {
+                            "candidate_id": "higher",
+                            "provider": "example",
+                            "channel": "subscription",
+                            "model": "example-model",
+                            "effort": "high",
+                            "plan": "plan-2",
+                            "feature_scope": "code",
+                            "marginal_cash": "0",
+                        },
+                        {
+                            "candidate_id": "base",
+                            "provider": "example",
+                            "channel": "subscription",
+                            "model": "example-model",
+                            "effort": "high",
+                            "plan": "plan-1",
+                            "feature_scope": "code",
+                        },
+                        {
+                            "candidate_id": "image-as-code",
+                            "provider": "example",
+                            "channel": "subscription",
+                            "model": "example-model",
+                            "effort": "high",
+                            "plan": "plan-9",
+                            "feature_scope": "code",
+                        },
+                    ],
+                },
+            )
+            assert estimate.status_code == 200, estimate.text
+            by_id = {row["candidate_id"]: row for row in estimate.json()["results"]}
+            assert Decimal(by_id["higher"]["metrics"]["N"]) == Decimal("200")
+            assert Decimal(by_id["higher"]["metrics"]["K"]) == Decimal("0.1")
+            assert Decimal(by_id["higher"]["metrics"]["cost_ratio"]) == Decimal("0.5")
+            assert by_id["higher"]["metrics"]["cash_increment"] == "0"
+            assert Decimal(by_id["higher"]["metrics"]["amortization"]) == Decimal("0.1")
+            assert "total" not in by_id["higher"]["metrics"]
+            assert by_id["image-as-code"]["status"] == "missing_data"
+            catalog = client.get("/v1/catalog").json()["records"]
+            assert all(row["plan"] != "plan-9" or row["feature_scope"] == "image" for row in catalog)
+    finally:
+        _stop(proc)
+    exported = subprocess.run(
+        [sys.executable, "-m", "agent_costbook.export", "--db", str(db)],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+    )
+    assert exported.returncode == 0, exported.stderr
+    document = json.loads(exported.stdout)
+    assert document["snapshot_id"] == "snap-3"
+    assert {row["plan"] for row in document["records"]} == {"plan-1", "plan-2", "plan-9"}
+    assert "e2e-token" not in exported.stdout.decode()
