@@ -154,7 +154,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return JSONResponse(status_code=201 if created else 200, content=recorded)
 
     @app.post("/v1/estimates")
-    def estimates(body: EstimateIn) -> dict:
+    def estimates(
+        body: EstimateIn,
+        authorization: str | None = Header(default=None),
+    ) -> dict:
+        if body.method == "M7":
+            _require_admin(resolved, authorization)
         revision = store.revision_of(body.snapshot_id)
         if body.snapshot_id is not None and revision is None:
             raise HTTPException(status_code=404, detail="snapshot not found")
@@ -180,6 +185,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     selection.record.get("evidence_ids") or []
                 )
         scenario = body.scenario.model_dump() if body.scenario is not None else None
+        published = catalog_document(store, revision)
         measurements = None
         if body.method == "M7":
             measurements = [
@@ -208,8 +214,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             candidates=[_candidate_dict(candidate) for candidate in body.candidates],
             selections=selections,
             measurements=measurements,
+            formula_set=published.get("formula_version"),
         )
-        published = catalog_document(store, revision)
         published.pop("records")
         for result in results:
             result["publisher_id"] = published["publisher_id"]

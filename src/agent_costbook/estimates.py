@@ -30,6 +30,19 @@ _FORMULAS = {
     "M7": "m7-v1",
 }
 _SUBSCRIPTION_METHODS = {"M1", "M2", "M3", "M6"}
+_LEGACY_FORMULA_SET = "ac-formulas-v1"
+_CURRENT_FORMULA_SET = "ac-formulas-v2"
+_LEGACY_METHODS = frozenset({"M0", "M1", "M2", "M4", "M6"})
+
+
+def _formula_allows(method: str, formula_set: str | None) -> bool:
+    if method not in _FORMULAS:
+        return False
+    if formula_set is None or formula_set == _CURRENT_FORMULA_SET:
+        return True
+    if formula_set == _LEGACY_FORMULA_SET:
+        return method in _LEGACY_METHODS
+    return False
 
 
 def parse_decimal(value: object) -> Decimal | None:
@@ -505,9 +518,10 @@ def evaluate_candidate(
     scenario_notes: list[str] | None = None,
     private_subscription: dict | None = None,
     measurement: dict | None = None,
+    formula_set: str | None = None,
 ) -> dict:
     result = _result(candidate_id, method, record)
-    if method not in _FORMULAS:
+    if not _formula_allows(method, formula_set):
         result["status"] = "unsupported_method"
         result["snapshot_id"] = None
         result["sources"] = []
@@ -716,6 +730,9 @@ def _evaluate_measured(
         "sample_size": measurement.get("sample_size"),
         "currency": observed,
     }
+    if measurement.get("observation_id"):
+        result["observation_id"] = measurement["observation_id"]
+        result["measurement"]["observation_id"] = measurement["observation_id"]
     for note in (
         "api_equivalent_excluded_from_cash",
         "retries_counted_in_cash_not_in_success",
@@ -765,6 +782,7 @@ def run_estimate(
     selections: list,
     compare: bool = True,
     measurements: list | None = None,
+    formula_set: str | None = None,
 ) -> list[dict]:
     paired = list(zip(candidates, selections))
     if measurements is None:
@@ -796,6 +814,7 @@ def run_estimate(
             scenario_notes=notes,
             private_subscription=candidate.get("private_subscription") or None,
             measurement=measurements[index],
+            formula_set=formula_set,
         )
         result["record_snapshot_id"] = (
             selection.record.get("snapshot_id") if selection.record else None

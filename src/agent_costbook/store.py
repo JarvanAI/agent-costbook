@@ -818,7 +818,10 @@ class Store:
         if len(matched) > 1:
             return {"status": "conflict"}
         if len(matched) == 1:
-            return json.loads(matched[0]["response_json"])["measurement"]
+            stored = json.loads(matched[0]["response_json"])
+            measurement = dict(stored["measurement"])
+            measurement["observation_id"] = stored["observation_id"]
+            return measurement
         if rows:
             return {"status": "invalid_input", "assumption": "currency_conversion_refused"}
         return None

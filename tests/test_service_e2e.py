@@ -551,8 +551,10 @@ def test_real_http_m3_m5_and_m7_share_the_core_and_hide_task_text(tmp_path):
             assert conflict.status_code == 409
 
             def estimate(method, **extra):
+                request_headers = headers if method == "M7" else None
                 response = client.post(
                     "/v1/estimates",
+                    headers=request_headers,
                     json={
                         "method": method,
                         "currency": "USD",
@@ -579,12 +581,26 @@ def test_real_http_m3_m5_and_m7_share_the_core_and_hide_task_text(tmp_path):
             assert "do_not_reweight_for_routing" in m3["assumptions"]
             assert Decimal(m5["metrics"]["K"]) == Decimal(m4["metrics"]["cost"]) == Decimal("0.0177")
             assert m5["quality_proxy"]["explains"] == "not_a_measured_success_rate"
+            hidden = client.post(
+                "/v1/estimates",
+                json={
+                    "method": "M7",
+                    "currency": "USD",
+                    "task_category": "coding",
+                    "acceptance": "tests_passed",
+                    "candidates": [candidate],
+                },
+            )
+            assert hidden.status_code == 401
+            assert "attributed_cash" not in hidden.text
+            assert "25" not in hidden.text
             measured = estimate(
                 "M7",
                 task_category="coding",
                 acceptance="tests_passed",
             )
             assert measured["status"] == "ok"
+            assert measured["observation_id"] == observed.json()["observation_id"]
             assert Decimal(measured["metrics"]["K"]) == Decimal("2.5")
             assert Decimal(measured["metrics"]["api_equivalent"]) == Decimal("100")
             assert measured["measurement"]["sample_size"] == "10"

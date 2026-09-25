@@ -6,10 +6,12 @@ API rates, subscription inputs, and explicit task-result imports in SQLite.
 It calculates M0 display, M1 quota price, M2 task amortization, M3
 capability-adjusted amortization, M4 task cost, M5 capability-adjusted task
 cost, M6 budget amortization, and M7 measured cost per successful task.
-New publications use formula set `ac-formulas-v2`. A file or stored snapshot
-whose formula set is `ac-formulas-v1` still calculates with the same M0–M6
-rules and is not rewritten. Any other formula set is refused as
-`unsupported_formula`.
+New publications use formula set `ac-formulas-v2`, which calculates M0–M7.
+A file or stored snapshot whose formula set is `ac-formulas-v1` still
+calculates only M0, M1, M2, M4, and M6, and its bytes are not rewritten.
+M3, M5, and M7 on that old set return `unsupported_method`. Any other formula
+set is refused as `unsupported_formula`. M0–M6 estimates stay public. M7
+reads stored measurements and requires the same admin token as a write.
 
 Design notes live in `.docs/`, which is outside this product Git history.
 
@@ -67,7 +69,11 @@ separately and are not added to cash. Zero successes with positive cash is
 status emits NaN or Infinity. `POST /v1/observations` uses the same admin
 token as contributions. Those rows are not part of `GET /v1/catalog` or the
 export file. An estimate names `task_category`, `acceptance`, and the
-candidate window; a missing sample stays `missing_data`.
+candidate window; a missing sample stays `missing_data`. `POST /v1/estimates`
+with method M7 requires `Authorization: Bearer $ACB_ADMIN_TOKEN` and returns
+the import's `observation_id`. The price snapshot id remains the catalog
+publication, not the measurement version. `period_start` and `period_end`
+must both include a timezone or both omit it; a mix is HTTP 422.
 
 `ac estimate` reads one published snapshot file, checks its kind, schema,
 publisher, `snap-N` version, record hash, and formula set, then uses the same

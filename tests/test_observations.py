@@ -164,6 +164,10 @@ def test_repeat_import_does_not_duplicate_or_enter_the_catalog(tmp_path):
         acceptance="tests_passed",
     )
     assert Decimal(found["attributed_cash"]) == Decimal("25")
+    assert found["observation_id"] == first["observation_id"]
+    measured = _measured(found)
+    assert measured["observation_id"] == first["observation_id"]
+    assert measured["measurement"]["observation_id"] == first["observation_id"]
     assert store.catalog(None) == []
     store.close()
 

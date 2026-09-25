@@ -148,30 +148,35 @@ def test_unknown_method_stays_unsupported():
     assert result["formula_version"] is None
 
 
-def test_v1_snapshot_keeps_m4_and_accepts_m5_without_rewriting_the_file():
+def test_v1_snapshot_keeps_m4_and_rejects_methods_added_later():
     raw = (FIXTURES / "ac-v0.2-published-1.json").read_bytes()
     document = json.loads(raw)
     request = json.loads((ROOT / "examples" / "estimate-request.json").read_text())
+    original = EstimateIn.model_validate(request)
+    kept = estimate_snapshot(document, original)
+    assert kept["formula_version"] == "ac-formulas-v1"
+    assert Decimal(kept["results"][0]["metrics"]["cost"]) == Decimal("0.0177")
+    for method in ("M3", "M5", "M7"):
+        request["method"] = method
+        estimated = estimate_snapshot(document, EstimateIn.model_validate(request))
+        assert estimated["formula_version"] == "ac-formulas-v1"
+        result = estimated["results"][0]
+        assert result["status"] == "unsupported_method"
+        assert result["metrics"] is None
+        assert result["formula_version"] is None
+        assert "0.0177" not in json.dumps(result)
+    current = dict(document)
+    current["formula_version"] = "ac-formulas-v2"
     request["method"] = "M5"
-    body = EstimateIn.model_validate(request)
-    estimated = estimate_snapshot(document, body)
-    assert estimated["formula_version"] == "ac-formulas-v1"
-    result = estimated["results"][0]
-    assert result["formula_version"] == "m5-v1"
-    assert Decimal(result["metrics"]["K"]) == Decimal("0.0177")
-    assert Decimal(result["metrics"]["cost"]) == Decimal("0.0177")
-    assert json.loads(raw)["formula_version"] == "ac-formulas-v1"
-    request["method"] = "M7"
-    missing = estimate_snapshot(document, EstimateIn.model_validate(request))
-    assert missing["formula_version"] == "ac-formulas-v1"
-    assert missing["results"][0]["status"] == "missing_data"
-    assert missing["results"][0]["metrics"] is None
-    unchanged = json.loads(raw)
-    assert unchanged["records"] == document["records"]
+    upgraded = estimate_snapshot(current, EstimateIn.model_validate(request))
+    assert upgraded["formula_version"] == "ac-formulas-v2"
+    assert Decimal(upgraded["results"][0]["metrics"]["K"]) == Decimal("0.0177")
+    assert json.loads(raw) == document
+    assert (FIXTURES / "ac-v0.2-published-1.json").read_bytes() == raw
     with_bad = dict(document)
     with_bad["formula_version"] = "ac-formulas-v0"
     try:
-        estimate_snapshot(with_bad, body)
+        estimate_snapshot(with_bad, original)
     except Exception as exc:
         assert getattr(exc, "code", None) == "unsupported_formula"
     else:

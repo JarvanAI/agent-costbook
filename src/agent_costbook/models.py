@@ -216,7 +216,17 @@ class ObservationIn(BaseModel):
             end = datetime.fromisoformat(self.period_end)
         except ValueError as exc:
             raise ValueError("period_start and period_end must be ISO timestamps") from exc
-        if start >= end:
+        if (start.tzinfo is None) != (end.tzinfo is None):
+            raise ValueError(
+                "period_start and period_end must both include a timezone or both omit it"
+            )
+        try:
+            ordered = start >= end
+        except TypeError as exc:
+            raise ValueError(
+                "period_start and period_end must both include a timezone or both omit it"
+            ) from exc
+        if ordered:
             raise ValueError("period_end must be after period_start")
         return self
 

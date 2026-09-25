@@ -250,6 +250,7 @@ def estimate_snapshot(
         candidates=[_candidate(candidate) for candidate in body.candidates],
         selections=selections,
         compare=compare,
+        formula_set=formula,
     )
     for result in results:
         result["publisher_id"] = document["publisher_id"]
