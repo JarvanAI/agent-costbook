@@ -367,7 +367,11 @@ def _comparison_match(method: str, left: dict, right: dict, allow_cross_provider
         return False
     if method == "M1":
         group = left.get("baseline_group") or ""
-        return bool(group) and group == (right.get("baseline_group") or "")
+        return (
+            bool(group)
+            and group == (right.get("baseline_group") or "")
+            and left.get("provider") == right.get("provider")
+        )
     profile = left.get("task_profile") or ""
     if not profile or profile != (right.get("task_profile") or ""):
         return False

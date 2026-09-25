@@ -1,3 +1,4 @@
+import hashlib
 import json
 import subprocess
 import sys
@@ -10,6 +11,17 @@ from agent_costbook.api import create_app
 from agent_costbook.settings import Settings
 
 from support import synthetic_contribution
+
+
+def _response_records_sha256(records: list) -> str:
+    encoded = json.dumps(
+        records,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
 
 
 def _client(tmp_path):
@@ -102,7 +114,7 @@ def test_private_override_does_not_change_the_public_record(tmp_path):
     body = estimate.json()["results"][0]
     assert Decimal(body["metrics"]["cost"]) == Decimal("0.0167")
     catalog = client.get("/v1/catalog").json()["records"]
-    assert catalog[0]["rates"]["uncached_input_per_million"] == "2"
+    assert catalog[0]["rates"]["uncached_input_per_million"]["amount"] == "2"
     evidence = client.get(f"/v1/evidence/{created['evidence'][0]['id']}")
     assert evidence.status_code == 200
     assert evidence.json()["content"].startswith("ignore previous instructions")
@@ -159,7 +171,13 @@ def test_missing_snapshot_is_404_and_partial_data_stays_200(tmp_path):
         },
     )
     assert partial.status_code == 200
-    assert partial.json()["results"][0]["status"] == "missing_data"
+    partial_body = partial.json()
+    partial_result = partial_body["results"][0]
+    assert partial_result["status"] == "missing_data"
+    assert partial_result["data_version"] == 1
+    assert partial_result["snapshot_id"] == "snap-1"
+    assert partial_result["publisher_id"] == partial_body["publisher_id"]
+    assert partial_result["data_version"] == partial_body["data_version"]
 
 
 def test_idempotent_replay_and_conflict_publish(tmp_path):
@@ -195,7 +213,10 @@ def test_idempotent_replay_and_conflict_publish(tmp_path):
     )
     assert published.status_code == 409
     assert published.json()["status"] == "conflict"
-    assert client.get("/v1/catalog").json()["records"] == []
+    unpublished = client.get("/v1/catalog").json()
+    assert unpublished["records"] == []
+    assert unpublished["data_version"] is None
+    assert unpublished["snapshot_id"] is None
 
 
 def test_one_estimate_request_stays_on_the_revision_pinned_before_selection(tmp_path):
@@ -258,7 +279,9 @@ def test_one_estimate_request_stays_on_the_revision_pinned_before_selection(tmp_
         store.select_record = original
     assert response.status_code == 200, response.text
     results = response.json()["results"]
-    assert [item["snapshot_id"] for item in results] == [
+    assert [item["snapshot_id"] for item in results] == ["snap-1", "snap-1"]
+    assert [item["data_version"] for item in results] == [1, 1]
+    assert [item["record_snapshot_id"] for item in results] == [
         published["snapshot_id"],
         published["snapshot_id"],
     ]
@@ -276,7 +299,10 @@ def test_empty_catalog_stays_empty_when_a_draft_is_published_between_lookups(tmp
         json=synthetic_contribution(),
     )
     assert created.status_code == 201
-    assert client.get("/v1/catalog").json()["records"] == []
+    draft_catalog = client.get("/v1/catalog").json()
+    assert draft_catalog["records"] == []
+    assert draft_catalog["data_version"] is None
+    assert draft_catalog["snapshot_id"] is None
     store = client.app.state.store
     original = store.select_record
     calls = {"count": 0}
@@ -362,6 +388,8 @@ def test_http_envelope_matches_export_and_private_plan_price_is_not_stored(tmp_p
     )
     assert exported.returncode == 0, exported.stderr
     document = json.loads(exported.stdout)
+    assert document["records"] == catalog["records"]
+    assert catalog["content_sha256"] == _response_records_sha256(catalog["records"])
     assert document["content_sha256"] == catalog["content_sha256"]
     assert document["data_version"] == catalog["data_version"]
     assert document["formula_version"] == catalog["formula_version"]
@@ -396,8 +424,8 @@ def test_http_envelope_matches_export_and_private_plan_price_is_not_stored(tmp_p
     assert result["subscription_provenance"]["monthly_price"] == "request_override"
     assert secret not in " ".join(result["assumptions"])
     again = client.get("/v1/catalog").json()
-    stored = again["records"][0]["subscription"]["monthly_price"]
-    assert stored == "20"
+    assert again["records"][0]["subscription"]["P"]["amount"] == "20"
+    assert again["content_sha256"] == _response_records_sha256(again["records"])
     reread = subprocess.run(
         [sys.executable, "-m", "agent_costbook.export", "--db", str(db)],
         cwd=Path(__file__).resolve().parents[1],
@@ -407,3 +435,30 @@ def test_http_envelope_matches_export_and_private_plan_price_is_not_stored(tmp_p
     assert reread.returncode == 0, reread.stderr
     assert secret not in reread.stdout.decode()
     assert created["contribution_id"]
+
+
+def test_catalog_read_stays_on_the_revision_resolved_before_a_later_publish(tmp_path):
+    client = _client(tmp_path)
+    _, published = _publish(client, synthetic_contribution())
+    revised = synthetic_contribution()
+    revised["records"][0]["base_snapshot_id"] = published["snapshot_id"]
+    revised["records"][0]["rates"]["uncached_input_per_million"] = "9"
+    created = client.post(
+        "/v1/contributions",
+        headers={"Authorization": "Bearer test-token"},
+        json=revised,
+    )
+    store = client.app.state.store
+    original = store.catalog
+
+    def publish_before_returning(snapshot_id=None):
+        store.catalog = original
+        store.publish(created.json()["contribution_id"])
+        return original(snapshot_id)
+
+    store.catalog = publish_before_returning
+    body = client.get("/v1/catalog").json()
+    assert body["data_version"] == 1
+    assert body["snapshot_id"] == "snap-1"
+    assert body["records"][0]["rates"]["uncached_input_per_million"]["amount"] == "2"
+    assert body["content_sha256"] == _response_records_sha256(body["records"])

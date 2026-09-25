@@ -10,7 +10,7 @@ from agent_costbook.estimates import (
     apply_scenario,
     evaluate_candidate,
 )
-from agent_costbook.export import public_envelope
+from agent_costbook.export import catalog_document
 from agent_costbook.models import ContributionIn, EstimateIn
 from agent_costbook.settings import Settings, load_settings
 from agent_costbook.store import Store, StoreError
@@ -32,13 +32,6 @@ def _require_admin(settings: Settings, authorization: str | None) -> None:
         raise HTTPException(status_code=401, detail="admin token required")
 
 
-def _public_record(record: dict) -> dict:
-    shown = dict(record)
-    shown["window_start"] = shown["window_start"] or None
-    shown["window_end"] = shown["window_end"] or None
-    return shown
-
-
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or load_settings()
     store = Store(resolved.db_path)
@@ -52,17 +45,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/v1/catalog")
     def catalog(snapshot_id: str | None = None) -> dict:
-        try:
-            records = store.catalog(snapshot_id)
-            revision = store.revision_of(snapshot_id)
-        except StoreError as exc:
-            if exc.code == "not_found":
-                raise HTTPException(status_code=404, detail="snapshot not found") from exc
-            raise
-        return {
-            **public_envelope(store, revision),
-            "records": [_public_record(record) for record in records],
-        }
+        revision = store.revision_of(snapshot_id)
+        if snapshot_id is not None and revision is None:
+            raise HTTPException(status_code=404, detail="snapshot not found")
+        return catalog_document(store, revision)
 
     @app.get("/v1/evidence/{evidence_id}")
     def evidence(evidence_id: str) -> dict:
@@ -126,10 +112,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.post("/v1/estimates")
     def estimates(body: EstimateIn) -> dict:
-        if body.snapshot_id is not None and not store.snapshot_exists(body.snapshot_id):
+        revision = store.revision_of(body.snapshot_id)
+        if body.snapshot_id is not None and revision is None:
             raise HTTPException(status_code=404, detail="snapshot not found")
-        pinned = body.snapshot_id if body.snapshot_id is not None else store.latest_snapshot_id()
-        frozen_snapshot = pinned if pinned is not None else _FROZEN_EMPTY_SNAPSHOT
+        frozen_snapshot = f"snap-{revision}" if revision is not None else _FROZEN_EMPTY_SNAPSHOT
         selected = []
         for candidate in body.candidates:
             selection = store.select_record(
@@ -179,9 +165,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 scenario_notes=notes,
                 private_subscription=private_subscription,
             )
-            result["record_snapshot_id"] = result["snapshot_id"] if selection.record else None
-            if result["status"] != "unsupported_method":
-                result["snapshot_id"] = pinned
+            result["record_snapshot_id"] = (
+                selection.record.get("snapshot_id") if selection.record else None
+            )
             record = selection.record or {}
             stored = record.get("subscription") or {}
             contexts.append(
@@ -219,8 +205,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 reference_candidate_id=body.reference_candidate_id,
                 allow_cross_provider=allow_cross_provider,
             )
-        revision = None if pinned in (None, "") else store.revision_of(pinned)
-        return {**public_envelope(store, revision), "results": results}
+        published = catalog_document(store, revision)
+        published.pop("records")
+        for result in results:
+            result["publisher_id"] = published["publisher_id"]
+            result["data_version"] = published["data_version"]
+            result["snapshot_id"] = published["snapshot_id"]
+        return {**published, "results": results}
 
     return app
 

@@ -141,6 +141,18 @@ def test_m1_same_group_can_compare_and_other_groups_cannot():
     assert "cost_ratio" not in ungrouped[0]["metrics"]
     assert "rank" not in ungrouped[0]
     assert "not_comparable" in ungrouped[0]["assumptions"]
+    cross_provider = apply_reference_comparison(
+        "M1",
+        [heavy, plus],
+        [
+            _context("heavy", provider="openai", baseline_group="plus-quota"),
+            _context("plus", provider="xai", baseline_group="plus-quota"),
+        ],
+        reference_candidate_id="plus",
+    )
+    assert "cost_ratio" not in cross_provider[0]["metrics"]
+    assert "rank" not in cross_provider[0]
+    assert "not_comparable" in cross_provider[0]["assumptions"]
 
 
 def test_m2_amortizes_assumed_tasks_and_does_not_rescale_measured_n():

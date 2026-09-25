@@ -105,11 +105,13 @@ def test_real_http_contribution_survives_restart_and_exports_markdown(tmp_path):
             _wait_health(client, proc)
             catalog = client.get("/v1/catalog")
             assert catalog.status_code == 200
-            record = catalog.json()["records"][0]
+            payload = catalog.json()
+            record = payload["records"][0]
+            assert payload["snapshot_id"] == "snap-1"
             assert record["model"] == "openai/gpt-4o-mini"
             assert record["channel"] == "openrouter"
-            assert "cache_write_per_million" not in record["rates"]
-            assert record["snapshot_id"] == snapshot_id
+            assert record["rates"]["cache_write_per_million"] is None
+            assert "snapshot_id" not in record
             estimate = client.post(
                 "/v1/estimates",
                 json={
@@ -184,10 +186,11 @@ def test_real_http_contribution_survives_restart_and_exports_markdown(tmp_path):
             )
             assert Decimal(old.json()["results"][0]["metrics"]["cost"]) == Decimal("0.0177")
             carried = client.get("/v1/catalog", params={"snapshot_id": first_snapshot})
-            carried_rows = {row["model"]: row for row in carried.json()["records"]}
+            carried_body = carried.json()
+            carried_rows = {row["model"]: row for row in carried_body["records"]}
+            assert carried_body["snapshot_id"] == "snap-2"
             assert set(carried_rows) == {"openai/gpt-4o-mini", "synthetic-m4"}
-            assert carried_rows["synthetic-m4"]["rates"]["uncached_input_per_million"] == "2"
-            assert carried_rows["openai/gpt-4o-mini"]["snapshot_id"] == snapshot_id
+            assert carried_rows["synthetic-m4"]["rates"]["uncached_input_per_million"]["amount"] == "2"
             whole = client.get("/v1/catalog")
             assert {row["model"] for row in whole.json()["records"]} == {
                 "openai/gpt-4o-mini",
@@ -329,7 +332,7 @@ def test_real_http_review_boundaries(tmp_path):
             assert rejected.status_code == 409
             assert rejected.json()["status"] == "conflict"
             active = {
-                row["model"]: row["rates"]["uncached_input_per_million"]
+                row["model"]: row["rates"]["uncached_input_per_million"]["amount"]
                 for row in client.get("/v1/catalog").json()["records"]
             }
             assert active["second-card"] == "2"
@@ -435,7 +438,7 @@ def test_real_http_m6_ratio_then_stopped_export(tmp_path):
             assert "total" not in by_id["higher"]["metrics"]
             assert by_id["image-as-code"]["status"] == "missing_data"
             catalog = client.get("/v1/catalog").json()["records"]
-            assert all(row["plan"] != "plan-9" or row["feature_scope"] == "image" for row in catalog)
+            assert all(row["plan"] != "plan-9" or row["scope"]["function"] == "image" for row in catalog)
     finally:
         _stop(proc)
     exported = subprocess.run(

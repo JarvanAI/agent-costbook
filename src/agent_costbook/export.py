@@ -147,7 +147,7 @@ def build_document(store: Store, data_version: int | None) -> dict:
     }
 
 
-def public_envelope(store: Store, data_version: int | None) -> dict:
+def catalog_document(store: Store, data_version: int | None) -> dict:
     if data_version is None:
         return {
             "publisher_id": store.publisher_id(),
@@ -157,6 +157,7 @@ def public_envelope(store: Store, data_version: int | None) -> dict:
             "formula_version": None,
             "freshness": None,
             "content_sha256": None,
+            "records": [],
         }
     document = build_document(store, data_version)
     return {
@@ -169,6 +170,7 @@ def public_envelope(store: Store, data_version: int | None) -> dict:
             "formula_version",
             "freshness",
             "content_sha256",
+            "records",
         )
     }
 
