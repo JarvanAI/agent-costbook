@@ -1,6 +1,9 @@
 import inspect
+import socket
+import threading
+import time
 
-from agent_costbook.fetch_policy import FetchError, fetch_public
+from agent_costbook.fetch_policy import FetchError, fetch_public, read_http_response
 from agent_costbook.settings import Settings
 
 
@@ -119,6 +122,113 @@ def test_oversize_body_and_timeout_fail_closed():
         assert exc.code == "timeout"
     else:
         raise AssertionError("timeout was accepted")
+
+
+def _serve(handler):
+    gate = socket.socket()
+    gate.bind(("127.0.0.1", 0))
+    gate.listen(1)
+    port = gate.getsockname()[1]
+
+    def run():
+        connection, _ = gate.accept()
+        try:
+            handler(connection)
+        finally:
+            connection.close()
+            gate.close()
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    return port, thread
+
+
+def _talk(port: int, deadline: float, *, max_header_bytes: int = 8192):
+    client = socket.create_connection(("127.0.0.1", port), 2)
+    client.sendall(b"GET / HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+    return read_http_response(
+        client,
+        deadline=deadline,
+        max_bytes=1000,
+        max_header_bytes=max_header_bytes,
+    )
+
+
+def test_stdlib_parser_accepts_chunked_body_and_rejects_slow_or_truncated():
+    def chunked(connection):
+        connection.recv(4096)
+        connection.sendall(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n"
+            b"5\r\nhello\r\n0\r\n\r\n"
+        )
+
+    port, thread = _serve(chunked)
+    reply = _talk(port, time.monotonic() + 2)
+    thread.join(2)
+    assert reply.status == 200
+    assert reply.body == b"hello"
+
+    def slow(connection):
+        connection.recv(4096)
+        connection.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 4\r\nConnection: close\r\n\r\n")
+        time.sleep(0.3)
+        connection.sendall(b"x")
+        time.sleep(1)
+
+    port, thread = _serve(slow)
+    try:
+        _talk(port, time.monotonic() + 0.45)
+    except FetchError as exc:
+        assert exc.code == "timeout"
+    else:
+        raise AssertionError("a slow body finished inside the deadline")
+    thread.join(2)
+
+    def truncated(connection):
+        connection.recv(4096)
+        connection.sendall(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n5\r\nhello"
+        )
+
+    port, thread = _serve(truncated)
+    try:
+        _talk(port, time.monotonic() + 2)
+    except FetchError as exc:
+        assert exc.code == "transport"
+    else:
+        raise AssertionError("truncated chunked body was accepted")
+    thread.join(2)
+
+    def huge(connection):
+        connection.recv(4096)
+        connection.sendall(b"HTTP/1.1 200 OK\r\nX-Big: " + (b"a" * 4000) + b"\r\n\r\n")
+
+    port, thread = _serve(huge)
+    try:
+        _talk(port, time.monotonic() + 2, max_header_bytes=512)
+    except FetchError as exc:
+        assert exc.code == "too_large"
+    else:
+        raise AssertionError("oversized headers were accepted")
+    thread.join(2)
+
+
+def test_redirect_chain_shares_one_deadline():
+    seen = []
+
+    def resolve(host):
+        return ["8.8.8.8"]
+
+    def opener(url, pinned_ip, timeout):
+        seen.append(timeout)
+        time.sleep(0.15)
+        if url.endswith("/start"):
+            return _Response(302, b"", {"location": "https://catalog.example/next"})
+        return _Response(200, b"ok")
+
+    result = fetch_public("https://catalog.example/start", resolve=resolve, opener=opener, timeout=5)
+    assert result.body == b"ok"
+    assert seen[1] < seen[0] - 0.1
 
 
 def test_production_fetch_has_no_private_network_switch():

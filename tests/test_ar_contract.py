@@ -26,6 +26,7 @@ BUSINESS = (
     "missing_fields",
     "error_code",
     "rate_provenance",
+    "freshness",
 )
 
 
@@ -95,7 +96,9 @@ def test_old_file_refuses_bad_identity_and_limits_comparison(tmp_path):
     accepted_body = json.loads(accepted.stdout)
     assert accepted_body["results"][0]["metrics"]["cost"] == "0.0177"
     assert accepted_body["comparison"] == "not_requested"
-    assert accepted_body["read_view"]["freshness"]["stale"] is None
+    assert accepted_body["read_view"]["records"][0]["freshness"]["stale"] is None
+    assert accepted_body["results"][0]["freshness"]["retrieved_at"] == "2026-09-25T00:00:00+00:00"
+    assert accepted_body["results"][0]["freshness"]["stale"] is None
 
     wrong_publisher = _estimate(snapshot, REQUEST, "--publisher", "pub_other")
     assert wrong_publisher.returncode == 2
@@ -164,7 +167,147 @@ def test_old_file_refuses_bad_identity_and_limits_comparison(tmp_path):
     assert by_id["plus"]["status"] == "ok"
     assert by_id["plus"]["metrics"]["K"] == "10"
     assert by_id["payg"]["status"] == "missing_data"
-    assert payload["read_view"]["freshness"]["stale"] is None
+    assert payload["read_view"]["records"][0]["freshness"]["stale"] is None
+
+
+def test_request_snapshot_must_match_the_file(tmp_path):
+    snapshot = FIXTURES / "ac-v0.2-published-1.json"
+    document = json.loads(snapshot.read_text())
+    request = json.loads(REQUEST.read_text())
+    request["snapshot_id"] = "snap-999"
+    path = tmp_path / "request.json"
+    path.write_text(json.dumps(request), encoding="utf-8")
+    refused = _estimate(snapshot, path, "--publisher", document["publisher_id"])
+    assert refused.returncode == 2
+    assert refused.stdout == b""
+    assert b"snapshot_id" in refused.stderr
+    assert b"0.0177" not in refused.stdout + refused.stderr
+
+
+def test_conflict_status_and_currency_mismatch_are_not_prices(tmp_path):
+    records = [
+        {
+            "assumptions": [],
+            "channel": "api",
+            "effort": None,
+            "missing_fields": [],
+            "model": "synthetic-m4",
+            "plan": "payg",
+            "provider": "example",
+            "rates": None,
+            "record_id": "rec_conflict",
+            "research_id": "rs_conflict",
+            "scope": {
+                "baseline_group": "coding",
+                "currency": "USD",
+                "function": "text",
+                "task_profile": "coding",
+            },
+            "sources": [
+                {
+                    "id": "ev_old",
+                    "kind": "official_api",
+                    "retrieved_at": "2026-09-25T00:00:00+00:00",
+                }
+            ],
+            "status": "conflict",
+            "subscription": None,
+        },
+        {
+            "assumptions": [],
+            "channel": "api",
+            "effort": None,
+            "missing_fields": [],
+            "model": "euro-card",
+            "plan": "payg",
+            "provider": "example",
+            "rates": {
+                "billed_output_per_million": {"amount": "8", "currency": "EUR", "unit": "per_million_tokens"},
+                "uncached_input_per_million": {"amount": "9", "currency": "EUR", "unit": "per_million_tokens"},
+            },
+            "record_id": "rec_euro",
+            "research_id": "rs_euro",
+            "scope": {
+                "baseline_group": "coding",
+                "currency": "USD",
+                "function": "text",
+                "task_profile": "coding",
+            },
+            "sources": [
+                {
+                    "id": "ev_euro",
+                    "kind": "official_api",
+                    "retrieved_at": "2026-09-25T00:00:00+00:00",
+                }
+            ],
+            "status": "ok",
+            "subscription": None,
+        },
+    ]
+    document = _hashed_document(records, published_at="2026-09-25T04:00:00+00:00")
+    path = tmp_path / "semantic.json"
+    path.write_bytes(json.dumps(document).encode())
+    request = {
+        "method": "M4",
+        "currency": "USD",
+        "snapshot_id": "snap-1",
+        "usage": {"uncached_input": "1000", "billed_output": "400"},
+        "extra_cost": "0",
+        "reference_candidate_id": "euro",
+        "candidates": [
+            {
+                "candidate_id": "held",
+                "provider": "example",
+                "channel": "api",
+                "model": "synthetic-m4",
+                "plan": "payg",
+                "feature_scope": "text",
+            },
+            {
+                "candidate_id": "euro",
+                "provider": "example",
+                "channel": "api",
+                "model": "euro-card",
+                "plan": "payg",
+                "feature_scope": "text",
+            },
+        ],
+    }
+    request_path = tmp_path / "request.json"
+    request_path.write_text(json.dumps(request), encoding="utf-8")
+    result = _estimate(path, request_path, "--publisher", "pub_sample", "--now", "2026-09-25T04:01:00+00:00", "--max-age-seconds", "60")
+    assert result.returncode == 0, result.stderr
+    body = json.loads(result.stdout)
+    by_id = {item["candidate_id"]: item for item in body["results"]}
+    assert by_id["held"]["status"] == "conflict"
+    assert by_id["held"]["metrics"] is None
+    assert by_id["euro"]["status"] == "invalid_input"
+    assert by_id["euro"]["metrics"] is None
+    assert "rank" not in by_id["held"]
+    assert "rank" not in by_id["euro"]
+    assert by_id["held"]["freshness"]["retrieved_at"] == "2026-09-25T00:00:00+00:00"
+    assert by_id["held"]["freshness"]["stale"] is None
+    view = next(item for item in body["read_view"]["records"] if item["candidate_id"] == "held")
+    assert view["freshness"]["stale"] is True
+    assert "0.009" not in result.stdout.decode()
+
+
+def _hashed_document(records: list, *, published_at: str) -> dict:
+    import hashlib
+
+    encoded = json.dumps(records, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+    return {
+        "content_sha256": hashlib.sha256(encoded).hexdigest(),
+        "data_version": 1,
+        "formula_version": "ac-formulas-v1",
+        "freshness": None,
+        "kind": "agent-costbook.snapshot",
+        "published_at": published_at,
+        "publisher_id": "pub_sample",
+        "records": records,
+        "schema_version": 1,
+        "snapshot_id": "snap-1",
+    }
 
 
 def test_freshness_unknown_is_not_false():

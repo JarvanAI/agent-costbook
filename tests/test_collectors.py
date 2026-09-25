@@ -21,13 +21,14 @@ def test_recorded_catalog_keeps_missing_prices_unset_and_ignores_instructions():
         retrieved_at=NOW,
     )
     assert observation.kind == "rates"
-    assert observation.rates == {
+    assert observation.cards[0].channel == "openrouter"
+    assert observation.cards[0].rates == {
         "uncached_input_per_million": "0.15",
         "cache_read_per_million": "0.075",
         "billed_output_per_million": "0.6",
     }
-    assert "cache_write_per_million" not in observation.rates
-    assert "0" not in observation.rates.values()
+    assert "cache_write_per_million" not in observation.cards[0].rates
+    assert "0" not in observation.cards[0].rates.values()
     assert "ignore previous instructions" in observation.evidence_text
     assert observation.parser == "openrouter-catalog-v1"
 
@@ -45,15 +46,31 @@ def test_layout_change_does_not_invent_a_zero_price():
         raise AssertionError("changed layout was parsed")
 
 
-def test_endpoint_disagreement_is_a_conflict_not_a_picked_price():
+def test_different_endpoint_regions_stay_separate_channels():
     observation = parse_endpoints(
         _body("openrouter-endpoints-conflict.json"),
         url="https://openrouter.ai/api/v1/models/openai/gpt-4o-mini/endpoints",
         retrieved_at=NOW,
     )
+    assert observation.kind == "rates"
+    assert observation.conflicts == ()
+    by_channel = {card.channel: card.rates["uncached_input_per_million"] for card in observation.cards}
+    assert by_channel == {
+        "openrouter:openai": "0.15",
+        "openrouter:azure/swedencentral": "0.165",
+    }
+
+
+def test_same_endpoint_tag_with_two_prices_is_a_conflict():
+    observation = parse_endpoints(
+        _body("openrouter-endpoints-same-tag.json"),
+        url="https://openrouter.ai/api/v1/models/openai/gpt-4o-mini/endpoints",
+        retrieved_at=NOW,
+    )
     assert observation.kind == "conflict"
-    amounts = {card["uncached_input_per_million"] for card in observation.variants}
-    assert amounts == {"0.15", "0.165"}
+    assert observation.cards == ()
+    amounts = {card.rates["uncached_input_per_million"] for card in observation.conflicts[0]}
+    assert amounts == {"0.15", "0.2"}
 
 
 def test_failed_fetch_keeps_the_previous_snapshot(tmp_path):

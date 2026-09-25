@@ -59,15 +59,27 @@ Publications written by this version include `scope.task_profile` and
 Older snapshot files keep their original bytes and do not gain those keys on
 upgrade. For those files, candidate metrics are still calculated, and a
 reference comparison returns `comparison: unavailable` rather than a rank.
-`read_view.freshness.stale` stays null unless both a timestamp and `--now`
-are supplied. `record_snapshot_id` is the service's internal id; the file
-carries `snapshot_id` (`snap-N`) and offline results leave the internal id empty.
+`read_view` freshness is per record and uses each source `retrieved_at`.
+`stale` stays null unless both that timestamp and `--now` are supplied, and it
+is not written back into the snapshot. Republishing an old source under a new
+`published_at` does not make the price fresh. A request `snapshot_id` must
+equal the file's `snap-N`; omit it only when the file you passed is the
+version you mean. A record whose `status` is `conflict`, or whose amount
+currency or unit disagrees with its scope, is not a usable price.
+`record_snapshot_id` is the service's internal id; the file carries
+`snapshot_id` (`snap-N`) and offline results leave the internal id empty.
 
-`ac collect --once` is one scheduled tick for two public OpenRouter sources:
-the model catalog and the fixed `openai/gpt-4o-mini` endpoints page. Put it
-on a timer. A failed fetch, a changed page layout, or disagreeing prices keep
-the previous snapshot active. Unknown prices are omitted, not stored as 0.
-The service does not run a research agent.
+`ac collect --once` runs one due tick and then exits. Cron can call it every
+minute; SQLite keeps `next_run_at` and the retry count, so an early invocation
+does not fetch again. `ac collect --max-runtime 3600` is a bounded loop that
+stops at the deadline or on SIGTERM. It is not a general crawler and it does
+not fetch HTML or forums. The only scheduled sources are the OpenRouter model
+catalog and the fixed `openai/gpt-4o-mini` endpoints JSON. Each endpoint tag,
+including a different region, is its own channel. Two prices for the same tag
+are published as a new snapshot whose record `status` is `conflict` and whose
+`conflicts` summary lists the variants; older snapshot bytes stay as they were.
+Unknown prices are omitted, not stored as 0. The service does not run a
+research agent.
 
 ## HTTP
 

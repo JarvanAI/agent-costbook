@@ -1,0 +1,1 @@
+{"data":{"id":"openai/gpt-4o-mini","endpoints":[{"provider_name":"OpenAI","tag":"openai","pricing":{"prompt":"0.00000015","completion":"0.0000006"}},{"provider_name":"OpenAI","tag":"openai","pricing":{"prompt":"0.0000002","completion":"0.0000008"}}]}}

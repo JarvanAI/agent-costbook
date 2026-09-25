@@ -28,14 +28,23 @@ class ParseError(Exception):
 
 
 @dataclass(frozen=True)
+class PriceCard:
+    provider: str
+    channel: str
+    model: str
+    tag: str
+    rates: dict
+
+
+@dataclass(frozen=True)
 class Observation:
     kind: str
     parser: str
     url: str
     retrieved_at: str
     evidence_text: str
-    rates: dict | None = None
-    variants: tuple = ()
+    cards: tuple = ()
+    conflicts: tuple = ()
 
 
 def parse_catalog(body: bytes, *, url: str, retrieved_at: str) -> Observation:
@@ -46,14 +55,20 @@ def parse_catalog(body: bytes, *, url: str, retrieved_at: str) -> Observation:
     hits = [row for row in rows if isinstance(row, dict) and row.get("id") == PINNED_MODEL]
     if len(hits) != 1 or not isinstance(hits[0].get("pricing"), dict):
         raise ParseError("layout")
-    rates = _rates(hits[0]["pricing"])
+    card = PriceCard(
+        provider="openai",
+        channel="openrouter",
+        model=PINNED_MODEL,
+        tag="",
+        rates=_rates(hits[0]["pricing"]),
+    )
     return Observation(
         kind="rates",
         parser=CATALOG_PARSER,
         url=url,
         retrieved_at=retrieved_at,
         evidence_text=_evidence(body, hits[0]),
-        rates=rates,
+        cards=(card,),
     )
 
 
@@ -65,27 +80,36 @@ def parse_endpoints(body: bytes, *, url: str, retrieved_at: str) -> Observation:
     endpoints = data.get("endpoints")
     if not isinstance(endpoints, list) or not endpoints:
         raise ParseError("layout")
-    cards = []
+    grouped: dict[str, list[PriceCard]] = {}
     for endpoint in endpoints:
         if not isinstance(endpoint, dict) or not isinstance(endpoint.get("pricing"), dict):
             raise ParseError("layout")
-        cards.append(_rates(endpoint["pricing"]))
-    if any(card != cards[0] for card in cards[1:]):
-        return Observation(
-            kind="conflict",
-            parser=ENDPOINTS_PARSER,
-            url=url,
-            retrieved_at=retrieved_at,
-            evidence_text=_evidence(body, {"id": PINNED_MODEL, "endpoints": cards}),
-            variants=tuple(cards),
+        tag = endpoint.get("tag") or endpoint.get("provider_name")
+        if not isinstance(tag, str) or not tag:
+            raise ParseError("layout")
+        card = PriceCard(
+            provider="openai",
+            channel=f"openrouter:{tag}",
+            model=PINNED_MODEL,
+            tag=tag,
+            rates=_rates(endpoint["pricing"]),
         )
+        grouped.setdefault(tag, []).append(card)
+    cards = []
+    conflicts = []
+    for group in grouped.values():
+        if any(not same_amounts(group[0].rates, item.rates) for item in group[1:]):
+            conflicts.append(tuple(group))
+        else:
+            cards.append(group[0])
     return Observation(
-        kind="rates",
+        kind="conflict" if conflicts else "rates",
         parser=ENDPOINTS_PARSER,
         url=url,
         retrieved_at=retrieved_at,
         evidence_text=_evidence(body, data),
-        rates=cards[0],
+        cards=tuple(cards),
+        conflicts=tuple(conflicts),
     )
 
 

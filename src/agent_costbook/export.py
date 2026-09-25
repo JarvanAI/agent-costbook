@@ -115,7 +115,7 @@ def _export_record(row: dict, evidence: dict[str, dict], generation: int | None 
     if generation == 2:
         scope["baseline_group"] = stored.get("baseline_group") or None
         scope["task_profile"] = stored.get("task_profile") or None
-    return {
+    exported = {
         "record_id": row["id"],
         "status": "ok",
         "provider": row["provider"],
@@ -131,6 +131,12 @@ def _export_record(row: dict, evidence: dict[str, dict], generation: int | None 
         "assumptions": list(stored.get("assumptions") or []),
         "research_id": row.get("research_id"),
     }
+    if generation == 2 and row.get("record_status") == "conflict":
+        exported["status"] = "conflict"
+        exported["rates"] = None
+        exported["subscription"] = None
+        exported["missing_fields"] = []
+    return exported
 
 
 def build_document(store: Store, data_version: int | None) -> dict:
@@ -144,7 +150,7 @@ def build_document(store: Store, data_version: int | None) -> dict:
     generation = _export_generation(snapshot)
     records = [_export_record(row, evidence, generation) for row in rows]
     records.sort(key=lambda item: item["record_id"])
-    return {
+    document = {
         "kind": "agent-costbook.snapshot",
         "schema_version": 1,
         "publisher_id": store.publisher_id(),
@@ -156,6 +162,30 @@ def build_document(store: Store, data_version: int | None) -> dict:
         "content_sha256": hashlib.sha256(_canonical(records)).hexdigest(),
         "records": records,
     }
+    if generation == 2:
+        document["conflicts"] = _conflict_summary(rows)
+    return document
+
+
+def _conflict_summary(rows: list[dict]) -> list[dict]:
+    summary = []
+    for row in rows:
+        if row.get("record_status") != "conflict":
+            continue
+        summary.append(
+            {
+                "channel": row["channel"],
+                "effort": row.get("effort") or None,
+                "feature_scope": row["feature_scope"],
+                "model": row["model"],
+                "plan": row["plan"],
+                "provider": row["provider"],
+                "record_id": row["id"],
+                "variants": list(row.get("conflict_variants") or []),
+            }
+        )
+    summary.sort(key=lambda item: item["record_id"])
+    return summary
 
 
 def catalog_document(store: Store, data_version: int | None) -> dict:
@@ -171,7 +201,7 @@ def catalog_document(store: Store, data_version: int | None) -> dict:
             "records": [],
         }
     document = build_document(store, data_version)
-    return {
+    kept = {
         key: document[key]
         for key in (
             "publisher_id",
@@ -184,6 +214,9 @@ def catalog_document(store: Store, data_version: int | None) -> dict:
             "records",
         )
     }
+    if "conflicts" in document:
+        kept["conflicts"] = document["conflicts"]
+    return kept
 
 
 def render(document: dict) -> bytes:

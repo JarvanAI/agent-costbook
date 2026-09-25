@@ -1,1 +1,1 @@
-{"data":{"id":"openai/gpt-4o-mini","endpoints":[{"provider_name":"OpenAI","pricing":{"prompt":"0.00000015","completion":"0.0000006"}},{"provider_name":"Azure","pricing":{"prompt":"0.000000165","completion":"0.00000066"}}]}}
+{"data":{"id":"openai/gpt-4o-mini","endpoints":[{"provider_name":"OpenAI","tag":"openai","pricing":{"prompt":"0.00000015","completion":"0.0000006"}},{"provider_name":"Azure","tag":"azure/swedencentral","pricing":{"prompt":"0.000000165","completion":"0.00000066"}}]}}

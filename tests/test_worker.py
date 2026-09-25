@@ -68,7 +68,7 @@ def test_agreeing_sources_publish_once_and_a_repeat_does_not_churn(tmp_path):
     again = _worker(store, fetch).tick(LATER)
     assert again["status"] == "unchanged"
     assert store.revision_of(None) == revision
-    record = next(row for row in store.catalog(None) if row["model"] == "openai/gpt-4o-mini")
+    record = next(row for row in store.catalog(None) if row["channel"] == "openrouter")
     assert record["rates"]["uncached_input_per_million"] == "0.15"
     assert "cache_write_per_million" not in record["rates"]
     evidence = store.get_evidence(record["evidence_ids"][0])
@@ -76,7 +76,25 @@ def test_agreeing_sources_publish_once_and_a_repeat_does_not_churn(tmp_path):
     store.close()
 
 
-def test_source_conflict_is_summarized_without_replacing_the_active_snapshot(tmp_path):
+def test_region_prices_publish_as_separate_channels(tmp_path):
+    db = tmp_path / "costbook.sqlite3"
+    store = Store(db)
+
+    def fetch(url):
+        if url.endswith("/endpoints"):
+            return _body("openrouter-endpoints-conflict.json")
+        return _body("openrouter-catalog-recorded.json")
+
+    assert _worker(store, fetch).tick(NOW)["status"] == "published"
+    channels = {row["channel"]: row["rates"]["uncached_input_per_million"] for row in store.catalog(None)}
+    assert channels["openrouter"] == "0.15"
+    assert channels["openrouter:openai"] == "0.15"
+    assert channels["openrouter:azure/swedencentral"] == "0.165"
+    assert store.conflict_summaries() == []
+    store.close()
+
+
+def test_same_channel_conflict_publishes_a_new_version_and_keeps_the_old_bytes(tmp_path):
     db = tmp_path / "costbook.sqlite3"
     store = Store(db)
 
@@ -86,26 +104,44 @@ def test_source_conflict_is_summarized_without_replacing_the_active_snapshot(tmp
         return _body("openrouter-catalog-recorded.json")
 
     assert _worker(store, agree).tick(NOW)["status"] == "published"
-    active = store.revision_of(None)
+    before = _export(db, "1")
+    assert json.loads(before)["conflicts"] == []
 
-    def disagree(url):
+    def clash(url):
         if url.endswith("/endpoints"):
-            return _body("openrouter-endpoints-conflict.json")
+            return _body("openrouter-endpoints-same-tag.json")
         return _body("openrouter-catalog-recorded.json")
 
-    result = _worker(store, disagree).tick(LATER)
+    result = _worker(store, clash).tick(LATER)
     assert result["status"] == "conflict"
-    assert store.revision_of(None) == active
-    summary = store.conflict_summaries()
-    assert summary
-    observed = {
-        item["rates"].get("uncached_input_per_million")
-        for entry in summary
-        for item in entry["rates"]
+    assert store.revision_of(None) == 2
+    assert _export(db, "1") == before
+    latest = json.loads(_export(db, "2"))
+    assert latest["conflicts"]
+    assert latest["conflicts"][0]["channel"] == "openrouter:openai"
+    amounts = {
+        variant["rates"]["uncached_input_per_million"] for variant in latest["conflicts"][0]["variants"]
     }
-    assert "0.165" in observed
-    assert "0.15" in observed
+    assert amounts == {"0.15", "0.2"}
+    conflict_row = next(row for row in latest["records"] if row["channel"] == "openrouter:openai")
+    assert conflict_row["status"] == "conflict"
+    assert conflict_row["rates"] is None
     store.close()
+
+
+def _export(db, version: str) -> bytes:
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    result = subprocess.run(
+        [sys.executable, "-m", "agent_costbook.export", "--db", str(db), "--data-version", version],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    return result.stdout
 
 
 def test_concurrent_publish_does_not_leave_half_a_snapshot(tmp_path):
@@ -176,6 +212,94 @@ def test_concurrent_publish_does_not_leave_half_a_snapshot(tmp_path):
         assert len(rows) == 2
         assert len({row["snapshot_id"] for row in rows}) == 1
     store.close()
+
+
+def test_bounded_loop_retries_from_the_saved_schedule_and_stops(tmp_path):
+    from datetime import datetime, timedelta
+
+    from agent_costbook.worker import collect_loop
+
+    class Clock:
+        def __init__(self):
+            self.now = datetime.fromisoformat(NOW)
+            self.mono = 0.0
+
+        def iso(self):
+            return self.now.isoformat()
+
+        def monotonic(self):
+            return self.mono
+
+        def sleep(self, seconds):
+            self.now += timedelta(seconds=seconds)
+            self.mono += seconds
+
+    calls = {"count": 0}
+
+    def fail(url):
+        calls["count"] += 1
+        raise FetchError("timeout")
+
+    store = Store(tmp_path / "loop.sqlite3")
+    results = collect_loop(
+        store,
+        fail,
+        clock=Clock(),
+        max_runtime=150,
+        interval_seconds=3600,
+        max_attempts=2,
+        retry_delay_seconds=60,
+    )
+    assert [item["status"] for item in results] == ["failed", "failed"]
+    assert calls["count"] == 2
+    job = store.collector_job("openrouter-public")
+    assert job["last_status"] == "failed"
+    assert job["next_run_at"] > "2026-09-25T00:02:00+00:00"
+    store.close()
+
+
+def test_collect_once_does_not_fetch_before_the_saved_next_run(tmp_path):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    db = tmp_path / "scheduled.sqlite3"
+    store = Store(db)
+    store.ensure_collector_job(
+        "openrouter-public",
+        interval_seconds=3600,
+        max_attempts=3,
+        now=NOW,
+    )
+    store.schedule_collector_job(
+        "openrouter-public",
+        now=NOW,
+        delay_seconds=3600,
+        attempt=1,
+        status="failed",
+        error="timeout",
+    )
+    store.close()
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "agent_costbook.offline",
+            "collect",
+            "--once",
+            "--db",
+            str(db),
+            "--now",
+            "2026-09-25T00:10:00+00:00",
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        check=False,
+        env=os.environ.copy(),
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.decode().strip() == "waiting"
 
 
 def test_there_is_no_built_in_research_provider(tmp_path):

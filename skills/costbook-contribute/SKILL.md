@@ -7,7 +7,7 @@ description: Contribute a public pricing or subscription observation to a local 
 
 The service does not research for you. Retrieve the public source yourself, then submit the observation through the API. Do not place the product record only in development `.docs`.
 
-The service separately collects two fixed public OpenRouter URLs on its own schedule. That collector is not a research agent, and there is no research-job endpoint. A failed or conflicting collection keeps the last active snapshot. Do not fill an unknown price with 0 or an unknown multiplier with 1.
+The service separately collects two fixed OpenRouter JSON URLs. That collector is not a research agent, there is no research-job endpoint, and it does not crawl HTML or forums. Different endpoint tags are different channels. Two prices for the same tag are published as `status: conflict` on a new snapshot. Do not fill an unknown price with 0 or an unknown multiplier with 1.
 
 To recalculate a published file without the HTTP service:
 
@@ -15,7 +15,7 @@ To recalculate a published file without the HTTP service:
 ac estimate --snapshot snapshot.json --request estimate.json --publisher "$PUBLISHER_ID"
 ```
 
-The request body matches `POST /v1/estimates`. Old published files do not contain `task_profile` or `baseline_group`. Metrics are still calculated from the fields that are present. A reference comparison on those files returns `comparison: unavailable` and does not invent the missing context. New publications include both scope fields. A file whose `formula_version` is not `ac-formulas-v1` returns `unsupported_formula`.
+The request body matches `POST /v1/estimates`. If you set `snapshot_id`, it must be the file's `snap-N`. Old published files do not contain `task_profile` or `baseline_group`. Metrics are still calculated from the fields that are present. A reference comparison on those files returns `comparison: unavailable` and does not invent the missing context. New publications include both scope fields. A file whose `formula_version` is not `ac-formulas-v1` returns `unsupported_formula`. Record freshness follows source `retrieved_at`, not the snapshot's publish time.
 
 ## Before writing
 

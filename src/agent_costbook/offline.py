@@ -69,12 +69,29 @@ def load_snapshot(raw: bytes, *, expected_publisher: str | None) -> dict:
     return document
 
 
+def _amount_rejected(value: dict, scope_currency: object, *, money: bool) -> bool:
+    amount_currency = value.get("currency")
+    if amount_currency is not None and amount_currency != scope_currency:
+        return True
+    unit = value.get("unit")
+    if unit is None:
+        return False
+    if money:
+        return unit != "per_million_tokens"
+    return unit not in {"count", "ratio"}
+
+
 def _internal_record(row: dict, document: dict) -> dict:
     scope = row.get("scope") if isinstance(row.get("scope"), dict) else {}
+    scope_currency = scope.get("currency")
     rates_raw = row.get("rates") if isinstance(row.get("rates"), dict) else {}
     rates = {}
+    quote_rejected = False
     for key, value in rates_raw.items():
         if not isinstance(value, dict) or value.get("amount") is None:
+            continue
+        if _amount_rejected(value, scope_currency, money=True):
+            quote_rejected = True
             continue
         rates[key] = value["amount"]
     subscription: dict = {}
@@ -82,6 +99,9 @@ def _internal_record(row: dict, document: dict) -> dict:
     for label, key in _LABELS:
         value = raw_subscription.get(label)
         if not isinstance(value, dict) or value.get("amount") is None:
+            continue
+        if _amount_rejected(value, scope_currency, money=label in {"P", "B0", "C"}):
+            quote_rejected = True
             continue
         subscription[key] = value["amount"]
         if label == "P" and value.get("period"):
@@ -99,6 +119,7 @@ def _internal_record(row: dict, document: dict) -> dict:
         for item in sources
         if isinstance(item, dict) and isinstance(item.get("id"), str)
     ]
+    retrieved = _earliest_retrieved(sources)
     record = {
         "id": row.get("record_id"),
         "provider": row.get("provider"),
@@ -109,15 +130,39 @@ def _internal_record(row: dict, document: dict) -> dict:
         "feature_scope": scope.get("function"),
         "window_start": window.get("start") or "",
         "window_end": window.get("end") or "",
-        "currency": scope.get("currency"),
+        "currency": scope_currency,
         "rates": rates,
         "evidence_ids": evidence_ids,
         "published_at": document.get("published_at"),
+        "source_retrieved_at": retrieved,
         "snapshot_id": None,
+        "quote_rejected": quote_rejected,
     }
+    if row.get("status") == "conflict":
+        record["record_status"] = "conflict"
     if subscription:
         record["subscription"] = subscription
     return record
+
+
+def _earliest_retrieved(sources: list) -> str | None:
+    from datetime import datetime
+
+    if not sources:
+        return None
+    parsed = []
+    for item in sources:
+        if not isinstance(item, dict):
+            return None
+        value = item.get("retrieved_at")
+        if not isinstance(value, str) or not value:
+            return None
+        try:
+            parsed.append((datetime.fromisoformat(value), value))
+        except ValueError:
+            return None
+    parsed.sort()
+    return parsed[0][1]
 
 
 def _ready(records: list) -> bool:
@@ -184,6 +229,8 @@ def estimate_snapshot(
     formula = document.get("formula_version")
     if formula != SUPPORTED_FORMULA:
         raise SnapshotError("unsupported_formula")
+    if body.snapshot_id is not None and body.snapshot_id != document.get("snapshot_id"):
+        raise SnapshotError("snapshot_id")
     rows = document["records"]
     ready = _ready(rows)
     internal = [_internal_record(row, document) for row in rows if isinstance(row, dict)]
@@ -210,7 +257,7 @@ def estimate_snapshot(
         result["publisher_id"] = document["publisher_id"]
         result["data_version"] = document["data_version"]
         result["snapshot_id"] = document["snapshot_id"]
-    return {
+    payload = {
         "kind": document["kind"],
         "schema_version": document["schema_version"],
         "publisher_id": document["publisher_id"],
@@ -223,14 +270,23 @@ def estimate_snapshot(
         "comparison": comparison,
         "results": results,
         "read_view": {
-            "freshness": freshness_view(
-                document.get("published_at") if isinstance(document.get("published_at"), str) else None,
-                now=now,
-                max_age_seconds=max_age_seconds,
-            ),
+            "records": [
+                {
+                    "candidate_id": result["candidate_id"],
+                    "freshness": freshness_view(
+                        (result.get("freshness") or {}).get("retrieved_at"),
+                        now=now,
+                        max_age_seconds=max_age_seconds,
+                    ),
+                }
+                for result in results
+            ],
             "comparison_context": "available" if ready else "unavailable",
         },
     }
+    if "conflicts" in document:
+        payload["conflicts"] = document["conflicts"]
+    return payload
 
 
 def _candidate(candidate) -> dict:
@@ -281,10 +337,11 @@ def main(argv: list[str] | None = None) -> int:
     collect = commands.add_parser("collect")
     collect.add_argument("--db", required=True)
     collect.add_argument("--once", action="store_true")
+    collect.add_argument("--max-runtime", type=float)
     collect.add_argument("--now")
     args = parser.parse_args(argv)
     if args.command == "collect":
-        return _collect(args.db, args.now)
+        return _collect(args.db, args.now, args.max_runtime)
     return _estimate(args)
 
 
@@ -323,24 +380,56 @@ def _estimate(args) -> int:
     return 0
 
 
-def _collect(db: str, now: str | None) -> int:
+def _collect(db: str, now: str | None, max_runtime: float | None) -> int:
+    import signal
+    import time
     from datetime import datetime, timezone
 
     from agent_costbook.store import Store, StoreError
-    from agent_costbook.worker import Worker, production_fetch
+    from agent_costbook.worker import Worker, collect_loop, production_fetch
 
-    stamp = now or datetime.now(timezone.utc).isoformat()
+    class _Wall:
+        def iso(self) -> str:
+            return now or datetime.now(timezone.utc).isoformat()
+
+        def monotonic(self) -> float:
+            return time.monotonic()
+
+        def sleep(self, seconds: float) -> None:
+            time.sleep(seconds)
+
     try:
         store = Store(db)
     except StoreError as exc:
         print(exc.code, file=sys.stderr)
         return 2
+    stopped = False
+
+    def _stop(signum, frame):
+        nonlocal stopped
+        stopped = True
+
     try:
-        result = Worker(store, fetch=production_fetch).tick(stamp)
+        if max_runtime is None:
+            stamp = now or datetime.now(timezone.utc).isoformat()
+            result = Worker(store, fetch=production_fetch).tick(stamp)
+            print(result["status"])
+            return 0 if result["status"] != "failed" else 1
+        signal.signal(signal.SIGTERM, _stop)
+        results = collect_loop(
+            store,
+            production_fetch,
+            clock=_Wall(),
+            max_runtime=max_runtime,
+            stop=lambda: stopped,
+        )
     finally:
         store.close()
-    print(result["status"])
-    return 0 if result["status"] != "failed" else 1
+    if not results:
+        print("stopped")
+        return 0
+    print(results[-1]["status"])
+    return 0 if results[-1]["status"] != "failed" else 1
 
 
 if __name__ == "__main__":

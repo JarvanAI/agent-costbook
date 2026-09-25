@@ -14,7 +14,6 @@ from agent_costbook.collectors import (
     same_amounts,
 )
 from agent_costbook.fetch_policy import FetchError, default_opener, default_resolve, fetch_public
-from agent_costbook.store import StoreError
 
 JOB_ID = "openrouter-public"
 SOURCES = (
@@ -66,18 +65,7 @@ class Worker:
             return self._fail(now, getattr(exc, "code", "timeout"))
         except ParseError as exc:
             return self._fail(now, exc.code)
-        if self._conflicting(observations):
-            self._hold_conflict(observations, now)
-            self._schedule(now, delay=self.interval_seconds, attempt=0, status="conflict", error=None)
-            return {"status": "conflict", "error": None}
-        rates = observations[0].rates or {}
-        active = self._active()
-        if active is not None and same_amounts(active["rates"], rates):
-            self._schedule(now, delay=self.interval_seconds, attempt=0, status="unchanged", error=None)
-            return {"status": "unchanged", "error": None}
-        self._publish(observations, rates, active, now)
-        self._schedule(now, delay=self.interval_seconds, attempt=0, status="published", error=None)
-        return {"status": "published", "error": None}
+        return self._publish_observed(observations, now)
 
     def _fail(self, now: str, code: str) -> dict:
         job = self.store.collector_job(JOB_ID)
@@ -104,53 +92,76 @@ class Worker:
             error=error,
         )
 
-    def _conflicting(self, observations: list[Observation]) -> bool:
-        if any(item.kind != "rates" or not item.rates for item in observations):
-            return True
-        first = observations[0].rates
-        return any(not same_amounts(first, item.rates or {}) for item in observations[1:])
-
-    def _active(self) -> dict | None:
-        selection = self.store.select_record(
-            provider="openai",
-            channel="openrouter",
-            model=PINNED_MODEL,
-            effort="",
-            plan="payg",
-            feature_scope="text",
-            window_start=None,
-            window_end=None,
-            currency="USD",
-            snapshot_id=None,
-        )
-        if selection.conflict or selection.record is None:
-            return None
-        return selection.record
-
-    def _publish(self, observations, rates: dict, active: dict | None, now: str) -> None:
-        payload = _payload(observations, [rates], now, active)
+    def _publish_observed(self, observations: list[Observation], now: str) -> dict:
+        active = {
+            (
+                row["provider"],
+                row["channel"],
+                row["model"],
+                row["effort"],
+                row["plan"],
+                row["feature_scope"],
+            ): row
+            for row in self.store.catalog(None)
+        }
+        records = []
+        saw_conflict = False
+        for observation in observations:
+            for card in observation.cards:
+                current = active.get(_card_key(card))
+                if (
+                    current is not None
+                    and current.get("record_status") != "conflict"
+                    and same_amounts(current.get("rates") or {}, card.rates)
+                ):
+                    continue
+                records.append(_record(card, current, conflict=False))
+            for group in observation.conflicts:
+                saw_conflict = True
+                current = active.get(_card_key(group[0]))
+                records.append(
+                    _record(
+                        group[0],
+                        current,
+                        conflict=True,
+                        variants=[{"tag": item.tag, "rates": item.rates} for item in group],
+                    )
+                )
+        if not records:
+            self._schedule(now, delay=self.interval_seconds, attempt=0, status="unchanged", error=None)
+            return {"status": "unchanged", "error": None}
+        payload = _payload(observations, records, now)
         created, _ = self.store.create_contribution(payload, _idempotency(payload))
         self.store.publish(created["contribution_id"])
-
-    def _hold_conflict(self, observations, now: str) -> None:
-        cards = []
-        for observation in observations:
-            if observation.variants:
-                cards.extend(observation.variants)
-            elif observation.rates:
-                cards.append(observation.rates)
-        if len(cards) < 2:
-            return
-        payload = _payload(observations, cards, now, None)
-        created, _ = self.store.create_contribution(payload, _idempotency(payload))
-        try:
-            self.store.publish(created["contribution_id"])
-        except StoreError as exc:
-            if exc.code != "conflict":
-                raise
+        status = "conflict" if saw_conflict else "published"
+        self._schedule(now, delay=self.interval_seconds, attempt=0, status=status, error=None)
+        return {"status": status, "error": None}
 
 
-def _payload(observations, cards, now: str, active: dict | None) -> dict:
+def _card_key(card) -> tuple:
+    return (card.provider, card.channel, card.model, "", "payg", "text")
+
+
+def _record(card, current: dict | None, *, conflict: bool, variants: list | None = None) -> dict:
+    record = {
+        "provider": card.provider,
+        "channel": card.channel,
+        "model": card.model,
+        "effort": "",
+        "plan": "payg",
+        "feature_scope": "text",
+        "currency": "USD",
+        "rates": {} if conflict else dict(card.rates),
+    }
+    if current is not None:
+        record["base_snapshot_id"] = current["snapshot_id"]
+    if conflict:
+        record["status"] = "conflict"
+        record["conflict_variants"] = variants or []
+    return record
+
+
+def _payload(observations, records, now: str) -> dict:
     evidence = [
         {
             "source_kind": "official_api",
@@ -162,26 +173,15 @@ def _payload(observations, cards, now: str, active: dict | None) -> dict:
         }
         for item in observations
     ]
-    records = []
-    for card in cards:
-        record = {
-            "provider": "openai",
-            "channel": "openrouter",
-            "model": PINNED_MODEL,
-            "effort": "",
-            "plan": "payg",
-            "feature_scope": "text",
-            "currency": "USD",
-            "rates": dict(card),
-            "evidence_indexes": list(range(len(evidence))),
-        }
-        if active is not None:
-            record["base_snapshot_id"] = active["snapshot_id"]
-        records.append(record)
+    for record in records:
+        record["evidence_indexes"] = list(range(len(evidence)))
     lines = [f"Collected {PINNED_MODEL} at {now}.", "Retrieved pages are stored as data."]
-    if cards:
-        for key in sorted(cards[0]):
-            lines.append(f"{key}: {cards[0][key]}")
+    for record in records:
+        if record.get("status") == "conflict":
+            lines.append(f"{record['channel']}: conflict")
+            continue
+        for key in sorted(record["rates"]):
+            lines.append(f"{record['channel']} {key}: {record['rates'][key]}")
     return {
         "research": {
             "title": f"OpenRouter {PINNED_MODEL} public collection",
@@ -205,6 +205,39 @@ def json_key(payload: dict) -> str:
 
 def production_fetch(url: str) -> bytes:
     return fetch_public(url, resolve=default_resolve, opener=default_opener).body
+
+
+def collect_loop(
+    store,
+    fetch,
+    *,
+    clock,
+    max_runtime: float,
+    interval_seconds: int = 3600,
+    max_attempts: int = 3,
+    retry_delay_seconds: int = 60,
+    stop=None,
+) -> list[dict]:
+    worker = Worker(
+        store,
+        fetch=fetch,
+        interval_seconds=interval_seconds,
+        max_attempts=max_attempts,
+        retry_delay_seconds=retry_delay_seconds,
+    )
+    started = clock.monotonic()
+    results = []
+    while clock.monotonic() - started < max_runtime:
+        if stop is not None and stop():
+            break
+        results.append(worker.tick(clock.iso()))
+        job = store.collector_job(JOB_ID)
+        wait = (_clock(job["next_run_at"]) - _clock(clock.iso())).total_seconds()
+        remaining = max_runtime - (clock.monotonic() - started)
+        if remaining <= 0:
+            break
+        clock.sleep(min(max(wait, 0.0), remaining))
+    return results
 
 
 def main(argv: list[str] | None = None) -> int:

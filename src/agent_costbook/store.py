@@ -202,6 +202,8 @@ class Store:
         self._add_column("snapshots", "formula_version", "TEXT")
         self._add_column("snapshots", "export_generation", "INTEGER")
         self._add_column("records", "subscription_json", "TEXT")
+        self._add_column("records", "record_status", "TEXT")
+        self._add_column("records", "conflict_variants_json", "TEXT")
         self._conn.execute(
             """
             UPDATE snapshots
@@ -279,6 +281,10 @@ class Store:
                         "evidence_ids": evidence_ids,
                         "base_snapshot_id": item.get("base_snapshot_id") or "",
                         "subscription": _subscription_payload(item),
+                        "record_status": "conflict" if item.get("status") == "conflict" else None,
+                        "conflict_variants": item.get("conflict_variants")
+                        if item.get("status") == "conflict"
+                        else None,
                     }
                 )
             response = {
@@ -341,8 +347,9 @@ class Store:
                     INSERT INTO records (
                         id, contribution_id, snapshot_id, provider, channel, model, effort,
                         plan, feature_scope, window_start, window_end, currency,
-                        rates_json, evidence_ids_json, base_snapshot_id, subscription_json
-                    ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        rates_json, evidence_ids_json, base_snapshot_id, subscription_json,
+                        record_status, conflict_variants_json
+                    ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
@@ -361,6 +368,14 @@ class Store:
                             json.dumps(row["evidence_ids"]),
                             row["base_snapshot_id"],
                             json.dumps(row["subscription"], ensure_ascii=False, sort_keys=True),
+                            row["record_status"],
+                            None
+                            if row["conflict_variants"] is None
+                            else json.dumps(
+                                row["conflict_variants"],
+                                ensure_ascii=False,
+                                sort_keys=True,
+                            ),
                         )
                         for row in record_rows
                     ],
@@ -806,4 +821,29 @@ class Store:
         }
         if subscription:
             record["subscription"] = subscription
+        if "record_status" in keys and row["record_status"]:
+            record["record_status"] = row["record_status"]
+        if "conflict_variants_json" in keys and row["conflict_variants_json"]:
+            record["conflict_variants"] = json.loads(row["conflict_variants_json"])
         return record
+
+    @_locked
+    def earliest_retrieved_at(self, evidence_ids: list[str]) -> str | None:
+        if not evidence_ids:
+            return None
+        placeholders = ",".join("?" for _ in evidence_ids)
+        rows = self._conn.execute(
+            f"SELECT id, retrieved_at FROM evidence WHERE id IN ({placeholders})",
+            evidence_ids,
+        ).fetchall()
+        found = {row["id"]: row["retrieved_at"] for row in rows}
+        if any(item not in found or not found[item] for item in evidence_ids):
+            return None
+        parsed = []
+        for value in found.values():
+            try:
+                parsed.append((datetime.fromisoformat(value), value))
+            except ValueError:
+                return None
+        parsed.sort()
+        return parsed[0][1]

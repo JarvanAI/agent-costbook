@@ -150,6 +150,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
             for candidate in body.candidates
         ]
+        for selection in selections:
+            if selection.record is not None:
+                selection.record["source_retrieved_at"] = store.earliest_retrieved_at(
+                    selection.record.get("evidence_ids") or []
+                )
         scenario = body.scenario.model_dump() if body.scenario is not None else None
         results = run_estimate(
             method=body.method,

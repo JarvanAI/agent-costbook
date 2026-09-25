@@ -55,8 +55,10 @@ def _result(candidate_id: str, method: str, record: dict | None) -> dict:
     if record is not None:
         snapshot_id = record.get("snapshot_id")
         sources = list(record.get("evidence_ids") or [])
-        if record.get("published_at"):
-            freshness = {"published_at": record["published_at"]}
+        freshness = {
+            "retrieved_at": record.get("source_retrieved_at"),
+            "stale": None,
+        }
     return {
         "candidate_id": candidate_id,
         "status": "ok",
@@ -478,9 +480,13 @@ def evaluate_candidate(
         result["sources"] = []
         result["freshness"] = None
         return result
-    if conflict:
+    if conflict or (record is not None and record.get("record_status") == "conflict"):
         result["status"] = "conflict"
+        result["metrics"] = None
+        result["units"] = None
         return result
+    if record is not None and record.get("quote_rejected"):
+        return _invalid(result, "currency_or_unit_mismatch")
     if record is None:
         result["status"] = "missing_data"
         result["missing_fields"] = ["record"]
@@ -612,22 +618,22 @@ def evaluate_candidate(
 
 
 def freshness_view(
-    published_at: str | None,
+    retrieved_at: str | None,
     *,
     now: str | None = None,
     max_age_seconds: int | None = None,
 ) -> dict:
-    view = {"published_at": published_at, "stale": None}
-    if not published_at or now is None or max_age_seconds is None:
+    view = {"retrieved_at": retrieved_at, "stale": None}
+    if not retrieved_at or now is None or max_age_seconds is None:
         return view
     try:
-        published = datetime.fromisoformat(published_at)
+        retrieved = datetime.fromisoformat(retrieved_at)
         current = datetime.fromisoformat(now)
     except ValueError:
         return view
-    if published.tzinfo is None or current.tzinfo is None:
+    if retrieved.tzinfo is None or current.tzinfo is None:
         return view
-    view["stale"] = (current - published).total_seconds() > max_age_seconds
+    view["stale"] = (current - retrieved).total_seconds() > max_age_seconds
     return view
 
 
