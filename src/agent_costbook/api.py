@@ -5,6 +5,7 @@ import hmac
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse
 
+from agent_costbook import __version__
 from agent_costbook.estimates import run_estimate
 from agent_costbook.export import catalog_document
 from agent_costbook.models import CandidateIn, ContributionIn, EstimateIn, ObservationIn
@@ -55,7 +56,7 @@ def _require_admin(settings: Settings, authorization: str | None) -> None:
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or load_settings()
     store = Store(resolved.db_path)
-    app = FastAPI(title="agent-costbook", version="0.4.0")
+    app = FastAPI(title="agent-costbook", version=__version__)
     app.state.store = store
     app.state.settings = resolved
 

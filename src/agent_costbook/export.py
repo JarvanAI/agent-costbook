@@ -240,6 +240,8 @@ def main(argv: list[str] | None = None) -> int:
                 raise ExportError(
                     "database schema needs migration before export; start the service once, then export"
                 ) from exc
+            if exc.code == "future_schema":
+                raise ExportError("database schema is newer than this release") from exc
             raise ExportError("database not found") from exc
         try:
             payload = render(build_document(store, version))

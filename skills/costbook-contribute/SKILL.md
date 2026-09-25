@@ -7,6 +7,8 @@ description: Contribute a public pricing or subscription observation to a local 
 
 The service does not research for you. Retrieve the public source yourself, then submit the observation through the API. Do not place the product record only in development `.docs`.
 
+API v1 and snapshot `schema_version` 1 are frozen. `agent-costbook-migrate` and `agent-costbook-backup` are operator commands for the local database, not contribution calls. A database schema newer than this release is refused instead of downgraded.
+
 The service separately collects two fixed OpenRouter JSON URLs. That collector is not a research agent, there is no research-job endpoint, and it does not crawl HTML or forums. Different endpoint tags are different channels. Two prices for the same tag are published as `status: conflict` on a new snapshot. Do not fill an unknown price with 0 or an unknown multiplier with 1.
 
 To recalculate a published file without the HTTP service:

@@ -10,6 +10,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from agent_costbook.migrations import SCHEMA_VERSION, MigrationError, apply_schema, upgrade_database
+
 FORMULA_SET = "ac-formulas-v2"
 LEGACY_FORMULA_SET = "ac-formulas-v1"
 SUPPORTED_FORMULA_SETS = frozenset({FORMULA_SET, LEGACY_FORMULA_SET})
@@ -112,9 +114,18 @@ class Store:
                 check_same_thread=False,
             )
             self._conn.row_factory = sqlite3.Row
-            if not self._schema_ready():
+            version = int(self._conn.execute("PRAGMA user_version").fetchone()[0])
+            if version > SCHEMA_VERSION or not self._schema_ready():
+                self._conn.close()
+                if version > SCHEMA_VERSION:
+                    raise StoreError("future_schema")
                 raise StoreError("migration_required")
             return
+        if self.path.exists():
+            try:
+                upgrade_database(self.path)
+            except MigrationError as exc:
+                raise StoreError(exc.code) from exc
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.path, check_same_thread=False, isolation_level=None)
         self._conn.row_factory = sqlite3.Row
@@ -140,130 +151,13 @@ class Store:
         return publisher is not None
 
     def _migrate(self) -> None:
-        self._conn.executescript(
-            """
-            CREATE TABLE IF NOT EXISTS contributions (
-                id TEXT PRIMARY KEY,
-                status TEXT NOT NULL,
-                idempotency_key TEXT,
-                payload_sha256 TEXT NOT NULL,
-                response_json TEXT NOT NULL,
-                research_id TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                published_snapshot_id TEXT
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS contributions_idempotency
-                ON contributions(idempotency_key)
-                WHERE idempotency_key IS NOT NULL;
-            CREATE TABLE IF NOT EXISTS research (
-                id TEXT PRIMARY KEY,
-                contribution_id TEXT NOT NULL,
-                title TEXT NOT NULL,
-                markdown TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS evidence (
-                id TEXT PRIMARY KEY,
-                contribution_id TEXT NOT NULL,
-                source_kind TEXT NOT NULL,
-                source_url TEXT,
-                collector_kind TEXT NOT NULL,
-                collector_name TEXT NOT NULL,
-                content TEXT NOT NULL,
-                content_sha256 TEXT NOT NULL,
-                retrieved_at TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS snapshots (
-                id TEXT PRIMARY KEY,
-                contribution_id TEXT NOT NULL,
-                published_at TEXT NOT NULL,
-                revision INTEGER NOT NULL,
-                formula_version TEXT,
-                export_generation INTEGER
-            );
-            CREATE TABLE IF NOT EXISTS collector_jobs (
-                source_id TEXT PRIMARY KEY,
-                interval_seconds INTEGER NOT NULL,
-                next_run_at TEXT NOT NULL,
-                attempt INTEGER NOT NULL,
-                max_attempts INTEGER NOT NULL,
-                last_status TEXT,
-                last_error TEXT,
-                last_checked_at TEXT
-            );
-            CREATE TABLE IF NOT EXISTS records (
-                id TEXT PRIMARY KEY,
-                contribution_id TEXT NOT NULL,
-                snapshot_id TEXT,
-                provider TEXT NOT NULL,
-                channel TEXT NOT NULL,
-                model TEXT NOT NULL,
-                effort TEXT NOT NULL,
-                plan TEXT NOT NULL,
-                feature_scope TEXT NOT NULL,
-                window_start TEXT NOT NULL,
-                window_end TEXT NOT NULL,
-                currency TEXT NOT NULL,
-                rates_json TEXT NOT NULL,
-                evidence_ids_json TEXT NOT NULL,
-                base_snapshot_id TEXT NOT NULL,
-                subscription_json TEXT
-            );
-            CREATE TABLE IF NOT EXISTS publisher_identity (
-                singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
-                publisher_id TEXT NOT NULL
-            );
-            CREATE TABLE IF NOT EXISTS observations (
-                id TEXT PRIMARY KEY,
-                status TEXT NOT NULL,
-                idempotency_key TEXT,
-                payload_sha256 TEXT NOT NULL,
-                scope_key TEXT NOT NULL UNIQUE,
-                provider TEXT NOT NULL,
-                channel TEXT NOT NULL,
-                model TEXT NOT NULL,
-                effort TEXT NOT NULL,
-                plan TEXT NOT NULL,
-                feature_scope TEXT NOT NULL,
-                currency TEXT NOT NULL,
-                period_start TEXT NOT NULL,
-                period_end TEXT NOT NULL,
-                task_category TEXT NOT NULL,
-                acceptance TEXT NOT NULL,
-                response_json TEXT NOT NULL,
-                created_at TEXT NOT NULL
-            );
-            CREATE UNIQUE INDEX IF NOT EXISTS observations_idempotency
-                ON observations(idempotency_key)
-                WHERE idempotency_key IS NOT NULL;
-            """
-        )
-        self._add_column("snapshots", "formula_version", "TEXT")
-        self._add_column("snapshots", "export_generation", "INTEGER")
-        self._add_column("records", "subscription_json", "TEXT")
-        self._add_column("records", "record_status", "TEXT")
-        self._add_column("records", "conflict_variants_json", "TEXT")
-        self._conn.execute(
-            """
-            UPDATE snapshots
-            SET formula_version = ?
-            WHERE formula_version IS NULL
-            """,
-            (LEGACY_FORMULA_SET,),
-        )
-        existing = self._conn.execute(
-            "SELECT publisher_id FROM publisher_identity WHERE singleton = 1"
-        ).fetchone()
-        if existing is None:
-            self._conn.execute(
-                "INSERT INTO publisher_identity (singleton, publisher_id) VALUES (1, ?)",
-                (f"pub_{uuid.uuid4().hex}",),
-            )
+        version = int(self._conn.execute("PRAGMA user_version").fetchone()[0])
+        if version > SCHEMA_VERSION:
+            raise StoreError("future_schema")
+        if version == SCHEMA_VERSION and self._schema_ready():
+            return
+        apply_schema(self._conn)
         self._conn.commit()
-
-    def _add_column(self, table: str, column: str, definition: str) -> None:
-        present = {row[1] for row in self._conn.execute(f"PRAGMA table_info({table})")}
-        if column not in present:
-            self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
     def create_contribution(self, payload: dict, idempotency_key: str | None) -> tuple[dict, bool]:
         digest = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()

@@ -1,7 +1,8 @@
 # agent-costbook
 
 Local service for traceable AI model pricing, subscription amortization, and
-per-task API cost estimates. Version 0.4 stores evidence, research Markdown,
+per-task API cost estimates. Version 1.0 freezes API v1 and snapshot
+`schema_version` 1. It stores evidence, research Markdown,
 API rates, subscription inputs, and explicit task-result imports in SQLite.
 It calculates M0 display, M1 quota price, M2 task amortization, M3
 capability-adjusted amortization, M4 task cost, M5 capability-adjusted task
@@ -19,9 +20,21 @@ Design notes live in `.docs/`, which is outside this product Git history.
 
 ```sh
 uv sync --extra dev
+cp .env.example .env
 export ACB_DB=agent_costbook.sqlite3
 export ACB_ADMIN_TOKEN=choose-a-local-token
 uv run uvicorn agent_costbook.api:create_app --factory --host 127.0.0.1 --port 8080
+```
+
+Stop the service before migrating or copying the database. Migration refuses a
+schema newer than this release. Backup and restore refuse an existing
+destination and refuse to use the source path as the destination. A failed
+migration or copy leaves the source file unchanged.
+
+```sh
+uv run agent-costbook-migrate --db agent_costbook.sqlite3
+uv run agent-costbook-backup --source agent_costbook.sqlite3 --destination agent_costbook.sqlite3.bak
+uv run agent-costbook-backup --restore --source agent_costbook.sqlite3.bak --destination agent_costbook-restored.sqlite3
 ```
 
 Keep the bind address on `127.0.0.1`. Writes require `Authorization: Bearer $ACB_ADMIN_TOKEN`.
@@ -106,6 +119,38 @@ are published as a new snapshot whose record `status` is `conflict` and whose
 `conflicts` summary lists the variants; older snapshot bytes stay as they were.
 Unknown prices are omitted, not stored as 0. The service does not run a
 research agent.
+
+## Support
+
+| Surface | v1.0 |
+| --- | --- |
+| Formula set `ac-formulas-v2` | M0, M1, M2, M3, M4, M5, M6, M7 |
+| Formula set `ac-formulas-v1` | M0, M1, M2, M4, M6; M3, M5, and M7 return `unsupported_method` |
+| Scheduled collectors | OpenRouter model catalog and the fixed `openai/gpt-4o-mini` endpoints JSON |
+| Other providers | Any provider submitted through `POST /v1/contributions` |
+| Storage | One local SQLite file |
+| Snapshot document | `schema_version` 1, decimal strings, no automatic currency conversion |
+
+## Security
+
+Keep the process on `127.0.0.1`. Set `ACB_ADMIN_TOKEN` before any contribution,
+publication, observation import, or M7 read. Request fields `private_rates`,
+`marginal_cash`, and `private_subscription.monthly_price` apply only to that
+estimate. They are not written to the catalog, the export, or a log.
+Evidence and research Markdown are stored data, not instructions. Do not point
+backup, restore, or migrate at a database the service still has open.
+
+## Known limitations
+
+No license has been selected. A local wheel is a build artifact, not a public
+release and not a license grant. agent-router can import a published snapshot
+and call this service; a successful recommendation and automatic dispatch are
+not verified in this repository. Live OpenRouter collection depends on the
+network, and the offline tests use recorded fixtures. Freshness follows each
+source `retrieved_at`. M7 reports sample size, successful tasks, and
+`insufficient_data` or `unbounded`. This release does not add a savings-rate
+or quality-score gate. There is no multi-tenant control plane and no
+research-job endpoint.
 
 ## HTTP
 
