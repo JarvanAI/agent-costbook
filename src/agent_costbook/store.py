@@ -10,7 +10,13 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from agent_costbook.migrations import SCHEMA_VERSION, MigrationError, apply_schema, upgrade_database
+from agent_costbook.migrations import (
+    SCHEMA_VERSION,
+    MigrationError,
+    apply_schema,
+    schema_action,
+    upgrade_database,
+)
 
 FORMULA_SET = "ac-formulas-v2"
 LEGACY_FORMULA_SET = "ac-formulas-v1"
@@ -158,12 +164,17 @@ class Store:
             return
         self._conn.execute("BEGIN IMMEDIATE")
         try:
+            action = schema_action(self._conn)
+            if action == "future":
+                raise StoreError("future_schema")
+            if action == "current" and self._schema_ready():
+                self._conn.execute("ROLLBACK")
+                return
             apply_schema(self._conn)
+            self._conn.commit()
         except Exception:
             self._conn.rollback()
             raise
-        else:
-            self._conn.commit()
 
     def create_contribution(self, payload: dict, idempotency_key: str | None) -> tuple[dict, bool]:
         digest = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()

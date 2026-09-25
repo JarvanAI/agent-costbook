@@ -179,6 +179,26 @@ def _rollback(connection: sqlite3.Connection) -> None:
         pass
 
 
+def _user_version(connection: sqlite3.Connection) -> int:
+    try:
+        row = connection.execute("PRAGMA user_version").fetchone()
+    except sqlite3.Error as exc:
+        raise MigrationError("failed") from exc
+    if row is None:
+        raise MigrationError("failed")
+    return int(row[0])
+
+
+def schema_action(connection: sqlite3.Connection) -> str:
+    """Classify the version visible inside the caller's write transaction."""
+    version = _user_version(connection)
+    if version > SCHEMA_VERSION:
+        return "future"
+    if version == SCHEMA_VERSION:
+        return "current"
+    return "upgrade"
+
+
 def upgrade_database(path: str | Path) -> None:
     """Upgrade the same database file. A failure rolls the transaction back."""
     database = Path(path)
@@ -190,20 +210,23 @@ def upgrade_database(path: str | Path) -> None:
         raise MigrationError("failed") from exc
     try:
         try:
-            row = connection.execute("PRAGMA user_version").fetchone()
-        except sqlite3.Error as exc:
-            raise MigrationError("failed") from exc
-        if row is None:
-            raise MigrationError("failed")
-        version = int(row[0])
+            version = _user_version(connection)
+        except MigrationError:
+            raise
         if version > SCHEMA_VERSION:
             raise MigrationError("future_schema")
         if version == SCHEMA_VERSION:
             return
         try:
             connection.execute("BEGIN IMMEDIATE")
-            apply_schema(connection)
-            connection.execute("COMMIT")
+            action = schema_action(connection)
+            if action == "future":
+                raise MigrationError("future_schema")
+            if action == "upgrade":
+                apply_schema(connection)
+                connection.execute("COMMIT")
+            else:
+                connection.execute("ROLLBACK")
         except Exception:
             _rollback(connection)
             raise

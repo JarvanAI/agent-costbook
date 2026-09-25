@@ -1,4 +1,5 @@
 import sqlite3
+import threading
 from pathlib import Path
 
 import pytest
@@ -7,7 +8,7 @@ from agent_costbook.export import build_document, render
 from agent_costbook import migrations
 from agent_costbook.migrations import SCHEMA_VERSION, MigrationError, main, upgrade_database
 from agent_costbook.observations import aggregate_observation
-from agent_costbook.store import Store
+from agent_costbook.store import Store, StoreError
 from support import synthetic_contribution
 
 
@@ -298,6 +299,140 @@ def test_cli_prints_a_stable_failure_code(tmp_path, monkeypatch, capsys):
     assert captured.out == ""
     assert _version(db) == 0
     assert db.stat().st_ino == inode
+
+
+def _wal_database(path: Path) -> None:
+    Store(path).close()
+    connection = sqlite3.connect(path, isolation_level=None)
+    connection.execute("PRAGMA journal_mode=WAL")
+    connection.execute("PRAGMA user_version = 0")
+    connection.execute(
+        """
+        INSERT INTO snapshots (
+            id, contribution_id, published_at, revision, formula_version
+        ) VALUES ('sentinel', 'co', '2026-09-25T00:00:00+00:00', 99, NULL)
+        """
+    )
+    connection.close()
+
+
+def _race_connect(monkeypatch, reached_begin: threading.Event):
+    original = sqlite3.connect
+
+    def connect(*args, **kwargs):
+        connection = original(*args, **kwargs)
+
+        def trace(statement: str) -> None:
+            if statement.lstrip().upper().startswith("BEGIN"):
+                reached_begin.set()
+
+        connection.set_trace_callback(trace)
+        return connection
+
+    monkeypatch.setattr(sqlite3, "connect", connect)
+    return original
+
+
+def _run_race(db: Path, original_connect, reached_begin: threading.Event, target, committed_version: int):
+    writer = original_connect(db, isolation_level=None)
+    writer.execute("BEGIN IMMEDIATE")
+    writer.execute(f"PRAGMA user_version = {committed_version}")
+    outcome: dict = {}
+
+    def run() -> None:
+        try:
+            target()
+        except (MigrationError, StoreError) as exc:
+            outcome["code"] = exc.code
+        else:
+            outcome["code"] = None
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    assert reached_begin.wait(5)
+    writer.execute("COMMIT")
+    thread.join(5)
+    writer.close()
+    assert not thread.is_alive()
+    return outcome
+
+
+def test_upgrade_rechecks_future_version_after_the_write_lock(tmp_path, monkeypatch):
+    db = tmp_path / "future-race.sqlite3"
+    _wal_database(db)
+    reached_begin = threading.Event()
+    original = _race_connect(monkeypatch, reached_begin)
+    outcome = _run_race(
+        db,
+        original,
+        reached_begin,
+        lambda: upgrade_database(db),
+        99,
+    )
+    assert outcome["code"] == "future_schema"
+    connection = original(db)
+    assert connection.execute("PRAGMA user_version").fetchone()[0] == 99
+    formula = connection.execute(
+        "SELECT formula_version FROM snapshots WHERE id = 'sentinel'"
+    ).fetchone()[0]
+    connection.close()
+    assert formula is None
+
+
+def test_upgrade_rechecks_completed_version_after_the_write_lock(tmp_path, monkeypatch):
+    db = tmp_path / "current-race.sqlite3"
+    _wal_database(db)
+    reached_begin = threading.Event()
+    original = _race_connect(monkeypatch, reached_begin)
+    outcome = _run_race(
+        db,
+        original,
+        reached_begin,
+        lambda: upgrade_database(db),
+        SCHEMA_VERSION,
+    )
+    assert outcome["code"] is None
+    connection = original(db)
+    assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    formula = connection.execute(
+        "SELECT formula_version FROM snapshots WHERE id = 'sentinel'"
+    ).fetchone()[0]
+    connection.close()
+    assert formula is None
+
+
+def test_store_migrate_rechecks_version_after_the_write_lock(tmp_path, monkeypatch):
+    db = tmp_path / "store-race.sqlite3"
+    _wal_database(db)
+    monkeypatch.setattr("agent_costbook.store.upgrade_database", lambda path: None)
+    reached_begin = threading.Event()
+    original = _race_connect(monkeypatch, reached_begin)
+    outcome = _run_race(db, original, reached_begin, lambda: Store(db), 99)
+    assert outcome["code"] == "future_schema"
+    connection = original(db)
+    assert connection.execute("PRAGMA user_version").fetchone()[0] == 99
+    formula = connection.execute(
+        "SELECT formula_version FROM snapshots WHERE id = 'sentinel'"
+    ).fetchone()[0]
+    connection.close()
+    assert formula is None
+
+
+def test_store_migrate_keeps_a_completed_version(tmp_path, monkeypatch):
+    db = tmp_path / "store-current-race.sqlite3"
+    _wal_database(db)
+    monkeypatch.setattr("agent_costbook.store.upgrade_database", lambda path: None)
+    reached_begin = threading.Event()
+    original = _race_connect(monkeypatch, reached_begin)
+    outcome = _run_race(db, original, reached_begin, lambda: Store(db), SCHEMA_VERSION)
+    assert outcome["code"] is None
+    connection = original(db)
+    assert connection.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION
+    formula = connection.execute(
+        "SELECT formula_version FROM snapshots WHERE id = 'sentinel'"
+    ).fetchone()[0]
+    connection.close()
+    assert formula is None
 
 
 def test_corrupt_database_is_left_unchanged(tmp_path):
