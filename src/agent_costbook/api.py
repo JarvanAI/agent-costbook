@@ -10,6 +10,7 @@ from agent_costbook.estimates import (
     apply_scenario,
     evaluate_candidate,
 )
+from agent_costbook.export import public_envelope
 from agent_costbook.models import ContributionIn, EstimateIn
 from agent_costbook.settings import Settings, load_settings
 from agent_costbook.store import Store, StoreError
@@ -53,11 +54,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def catalog(snapshot_id: str | None = None) -> dict:
         try:
             records = store.catalog(snapshot_id)
+            revision = store.revision_of(snapshot_id)
         except StoreError as exc:
             if exc.code == "not_found":
                 raise HTTPException(status_code=404, detail="snapshot not found") from exc
             raise
-        return {"records": [_public_record(record) for record in records]}
+        return {
+            **public_envelope(store, revision),
+            "records": [_public_record(record) for record in records],
+        }
 
     @app.get("/v1/evidence/{evidence_id}")
     def evidence(evidence_id: str) -> dict:
@@ -157,6 +162,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             private = None
             if candidate.private_rates is not None:
                 private = candidate.private_rates.model_dump(exclude_none=True)
+            private_subscription = None
+            if candidate.private_subscription is not None:
+                private_subscription = candidate.private_subscription.model_dump(exclude_none=True)
             result = evaluate_candidate(
                 candidate_id=candidate.candidate_id,
                 method=body.method,
@@ -169,6 +177,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 marginal_cash=candidate.marginal_cash,
                 subscription_override=subscription,
                 scenario_notes=notes,
+                private_subscription=private_subscription,
             )
             result["record_snapshot_id"] = result["snapshot_id"] if selection.record else None
             if result["status"] != "unsupported_method":
@@ -186,6 +195,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "model": record.get("model", candidate.model),
                     "effort": record.get("effort", candidate.effort),
                     "task_profile": stored.get("task_profile") or "",
+                    "price_period": stored.get("price_period") or "",
+                    "baseline_group": stored.get("baseline_group") or "",
+                    "has_own_budget": bool(stored.get("baseline_api_budget")),
+                    "has_own_tasks": bool(
+                        stored.get("baseline_tasks") or stored.get("measured_tasks")
+                    ),
                 }
             )
             results.append(result)
@@ -204,7 +219,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 reference_candidate_id=body.reference_candidate_id,
                 allow_cross_provider=allow_cross_provider,
             )
-        return {"results": results}
+        revision = None if pinned in (None, "") else store.revision_of(pinned)
+        return {**public_envelope(store, revision), "results": results}
 
     return app
 

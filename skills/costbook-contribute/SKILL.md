@@ -13,7 +13,7 @@ The service does not research for you. Retrieve the public source yourself, then
 2. Read the source URL yourself. Keep an excerpt, not a whole site.
 3. Record `source_kind` separately from `collector_kind` and `collector_name`.
 4. Convert the source units explicitly. OpenRouter's USD-per-token prices become USD per million tokens by multiplying by 1000000.
-5. Omit any rate or subscription input the source does not state. Do not store 0 for an unknown price or 1 for an unknown multiplier, baseline budget, or utilization. A subscription record may include `subscription.monthly_price`, `price_period`, `quota_multiplier`, `baseline_tasks`, `measured_tasks`, `baseline_api_budget`, `utilization`, `cost_per_task`, `weight`, and `task_profile`.
+5. Omit any rate or subscription input the source does not state. Do not store 0 for an unknown price or 1 for an unknown multiplier, baseline budget, or utilization. A subscription record may include `subscription.monthly_price`, `price_period` (`month` for calculations), `quota_multiplier`, `baseline_tasks`, `measured_tasks`, `baseline_api_budget`, `utilization`, `cost_per_task`, `weight`, `task_profile`, and `baseline_group`. Omitting `weight` does not store 1.
 6. Leave `effort` empty when the source does not name one, and do not reuse that record for another effort.
 7. Keep evidence and research Markdown at or below 256 KiB each.
 

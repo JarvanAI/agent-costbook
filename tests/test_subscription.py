@@ -64,9 +64,13 @@ def _context(candidate_id, **overrides):
         "window_start": "2026-09-01",
         "window_end": "2026-10-01",
         "currency": "USD",
+        "price_period": "month",
         "model": "example-model",
         "effort": "high",
         "task_profile": "coding",
+        "baseline_group": "",
+        "has_own_budget": True,
+        "has_own_tasks": True,
     }
     context.update(overrides)
     return context
@@ -80,8 +84,11 @@ def test_m1_quota_price_is_price_over_multiplier():
     assert Decimal(result["metrics"]["K"]) == Decimal("20")
     assert Decimal(result["metrics"]["amortization"]) == Decimal("20")
     assert "total" not in result["metrics"]
-    assert "cash_increment" not in result["metrics"]
+    assert result["metrics"]["cash_increment"] is None
+    assert result["metrics"]["quota_consumption"] is None
     assert "cash_increment" in result["missing_fields"]
+    assert "quota_consumption" in result["missing_fields"]
+    assert "quota_metric" not in result["metrics"]
 
 
 def test_m1_same_group_can_compare_and_other_groups_cannot():
@@ -103,7 +110,10 @@ def test_m1_same_group_can_compare_and_other_groups_cannot():
     same = apply_reference_comparison(
         "M1",
         [heavy, plus],
-        [_context("heavy"), _context("plus")],
+        [
+            _context("heavy", baseline_group="plus-quota"),
+            _context("plus", baseline_group="plus-quota"),
+        ],
         reference_candidate_id="plus",
     )
     assert Decimal(same[0]["metrics"]["cost_ratio"]) == Decimal("1")
@@ -112,13 +122,25 @@ def test_m1_same_group_can_compare_and_other_groups_cannot():
     mixed = apply_reference_comparison(
         "M1",
         [heavy, image],
-        [_context("heavy"), _context("image", feature_scope="image")],
+        [
+            _context("heavy", baseline_group="plus-quota"),
+            _context("image", baseline_group="plus-quota", feature_scope="image"),
+        ],
         reference_candidate_id="heavy",
     )
     assert "cost_ratio" not in mixed[1]["metrics"]
     assert "rank" not in mixed[0]
     assert "rank" not in mixed[1]
     assert "not_comparable" in mixed[1]["assumptions"]
+    ungrouped = apply_reference_comparison(
+        "M1",
+        [heavy, plus],
+        [_context("heavy"), _context("plus", provider="example")],
+        reference_candidate_id="plus",
+    )
+    assert "cost_ratio" not in ungrouped[0]["metrics"]
+    assert "rank" not in ungrouped[0]
+    assert "not_comparable" in ungrouped[0]["assumptions"]
 
 
 def test_m2_amortizes_assumed_tasks_and_does_not_rescale_measured_n():
@@ -142,7 +164,8 @@ def test_m6_budget_amortization_and_reference_ratio():
     assert Decimal(candidate["metrics"]["N"]) == Decimal("200")
     assert Decimal(candidate["metrics"]["K"]) == Decimal("0.1")
     assert Decimal(candidate["metrics"]["api_equivalent"]) == Decimal("0.5")
-    assert Decimal(candidate["metrics"]["quota_metric"]) == Decimal("2")
+    assert candidate["metrics"]["quota_consumption"] is None
+    assert "quota_metric" not in candidate["metrics"]
     compared = apply_reference_comparison(
         "M6",
         [candidate, reference],
@@ -188,8 +211,8 @@ def test_explicit_equal_budget_can_cross_providers_without_becoming_the_default(
         "M6",
         [missing, reference],
         [
-            _context("missing", provider="grok"),
-            _context("ref", provider="openai"),
+            _context("missing", provider="grok", has_own_budget=False),
+            _context("ref", provider="openai", has_own_budget=True),
         ],
         reference_candidate_id="ref",
         allow_cross_provider=True,
@@ -199,8 +222,8 @@ def test_explicit_equal_budget_can_cross_providers_without_becoming_the_default(
         "M6",
         [missing, reference],
         [
-            _context("missing", provider="grok"),
-            _context("ref", provider="openai"),
+            _context("missing", provider="grok", has_own_budget=False),
+            _context("ref", provider="openai", has_own_budget=True),
         ],
         reference_candidate_id="ref",
     )
@@ -269,10 +292,26 @@ def test_mixed_currency_and_task_profile_are_not_compared():
 
 
 def test_equal_budget_scenario_is_explicit_and_does_not_change_the_reference():
-    candidate = {"id": "candidate", "subscription": {"quota_multiplier": "2"}}
+    candidate = {
+        "id": "candidate",
+        "currency": "USD",
+        "feature_scope": "code",
+        "subscription": {
+            "quota_multiplier": "2",
+            "price_period": "month",
+            "task_profile": "coding",
+        },
+    }
     reference = {
         "id": "reference",
-        "subscription": {"baseline_api_budget": "100", "baseline_tasks": "40"},
+        "currency": "USD",
+        "feature_scope": "code",
+        "subscription": {
+            "baseline_api_budget": "100",
+            "baseline_tasks": "40",
+            "price_period": "month",
+            "task_profile": "coding",
+        },
     }
     filled, notes = apply_scenario(
         candidate,
@@ -288,9 +327,93 @@ def test_equal_budget_scenario_is_explicit_and_does_not_change_the_reference():
     assert "baseline_api_budget" not in untouched
     assert empty == []
     assert "baseline_api_budget" not in candidate["subscription"]
+    other_currency = dict(candidate)
+    other_currency["currency"] = "CNY"
+    refused, refused_notes = apply_scenario(
+        other_currency,
+        reference,
+        {"equal_baseline_budget": True},
+    )
+    assert refused is not None
+    assert "baseline_api_budget" not in refused
+    assert refused_notes == []
 
 
 def test_subscription_methods_do_not_require_token_usage():
     result = _run("M1", record=_record(monthly_price="100", quota_multiplier="5"))
     assert result["status"] == "ok"
     assert "usage" not in result["missing_fields"]
+
+
+def test_different_models_compare_when_task_profile_and_own_budgets_match():
+    grok = _run("M6", candidate_id="grok-high")
+    astra = _run(
+        "M6",
+        candidate_id="astra-low",
+        record=_record(quota_multiplier="1", baseline_api_budget="80"),
+    )
+    compared = apply_reference_comparison(
+        "M6",
+        [grok, astra],
+        [
+            _context("grok-high", provider="xai", model="grok", effort="high"),
+            _context(
+                "astra-low",
+                provider="openai",
+                model="astra",
+                effort="low",
+                has_own_budget=True,
+            ),
+        ],
+        reference_candidate_id="astra-low",
+    )
+    assert compared[0]["status"] == "ok"
+    assert "cost_ratio" in compared[0]["metrics"]
+    assert "not_comparable" not in compared[0]["assumptions"]
+    blank = apply_reference_comparison(
+        "M6",
+        [grok, astra],
+        [
+            _context("grok-high", task_profile=""),
+            _context("astra-low", task_profile=""),
+        ],
+        reference_candidate_id="astra-low",
+    )
+    assert "cost_ratio" not in blank[0]["metrics"]
+    assert "not_comparable" in blank[0]["assumptions"]
+
+
+def test_omitted_weight_defaults_to_one_without_writing_the_record():
+    record = _record(weight=None)
+    result = _run("M6", record=record)
+    assert result["status"] == "ok"
+    assert Decimal(result["metrics"]["K"]) == Decimal("0.1")
+    assert Decimal(result["metrics"]["N"]) == Decimal("200")
+    assert "default_weight_one" in result["assumptions"]
+    assert record["subscription"].get("weight") is None
+
+
+def test_non_month_price_period_is_not_treated_as_monthly():
+    result = _run("M6", record=_record(price_period="year"))
+    assert result["status"] == "invalid_input"
+    assert result["metrics"] is None
+    assert "price_period_not_monthly" in result["assumptions"]
+
+
+def test_m0_returns_known_plan_fields_instead_of_an_empty_object():
+    result = _run("M0")
+    assert result["status"] == "ok"
+    assert result["metrics"]["monthly_price"] == "20"
+    assert result["metrics"]["baseline_api_budget"] == "100"
+    assert result["metrics"] != {}
+    assert "quota_metric" not in result["metrics"]
+
+
+def test_private_subscription_price_changes_only_this_request():
+    secret = "10"
+    result = _run("M6", private_subscription={"monthly_price": secret})
+    assert result["status"] == "ok"
+    assert Decimal(result["metrics"]["K"]) == Decimal("0.05")
+    assert result["subscription_provenance"]["monthly_price"] == "request_override"
+    assert secret not in " ".join(result["assumptions"])
+    assert PUBLISHED["subscription"]["monthly_price"] == "20"

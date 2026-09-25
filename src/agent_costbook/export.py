@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from agent_costbook.estimates import RATE_KEYS
-from agent_costbook.store import MAX_SAFE_INT, Store
+from agent_costbook.store import MAX_SAFE_INT, Store, StoreError
 
 _VERSION = re.compile(r"[1-9][0-9]*")
 _MONEY = {"B0", "C"}
@@ -59,11 +59,15 @@ def _export_record(row: dict, evidence: dict[str, dict]) -> dict:
             else:
                 exported_rates[key] = None
                 missing.append(key)
+        exported_rates["tool_fee_per_call"] = None
+        missing.append("tool_fee_per_call")
     elif stored:
         exported_rates = None
     else:
         exported_rates = {key: None for key in RATE_KEYS}
+        exported_rates["tool_fee_per_call"] = None
         missing.extend(RATE_KEYS)
+        missing.append("tool_fee_per_call")
 
     subscription = None
     if stored:
@@ -143,6 +147,32 @@ def build_document(store: Store, data_version: int | None) -> dict:
     }
 
 
+def public_envelope(store: Store, data_version: int | None) -> dict:
+    if data_version is None:
+        return {
+            "publisher_id": store.publisher_id(),
+            "data_version": None,
+            "snapshot_id": None,
+            "published_at": None,
+            "formula_version": None,
+            "freshness": None,
+            "content_sha256": None,
+        }
+    document = build_document(store, data_version)
+    return {
+        key: document[key]
+        for key in (
+            "publisher_id",
+            "data_version",
+            "snapshot_id",
+            "published_at",
+            "formula_version",
+            "freshness",
+            "content_sha256",
+        )
+    }
+
+
 def render(document: dict) -> bytes:
     return _canonical(document) + b"\n"
 
@@ -157,7 +187,14 @@ def main(argv: list[str] | None = None) -> int:
         path = Path(args.db)
         if not path.is_file():
             raise ExportError("database not found")
-        store = Store(path)
+        try:
+            store = Store(path, readonly=True)
+        except StoreError as exc:
+            if exc.code == "migration_required":
+                raise ExportError(
+                    "database schema needs migration before export; start the service once, then export"
+                ) from exc
+            raise ExportError("database not found") from exc
         try:
             payload = render(build_document(store, version))
         finally:

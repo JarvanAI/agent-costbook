@@ -95,6 +95,10 @@ def test_export_is_stable_and_hash_matches_records_only(tmp_path):
     assert "B0" in plan["missing_fields"]
     assert plan["subscription"]["m"]["amount"] == "2"
     assert "1" != plan["subscription"]["B0"]
+    api_row = by_plan["payg"]
+    assert api_row["rates"]["tool_fee_per_call"] is None
+    assert "tool_fee_per_call" in api_row["missing_fields"]
+    assert {"amount": "0"} not in api_row["rates"].values()
     old = _export(db, "--data-version", "1")
     assert old.returncode == 0
     historical = json.loads(old.stdout)
@@ -263,6 +267,7 @@ def test_recorded_snapshot_sample_recomputes_its_records_hash():
     assert document["content_sha256"] == _records_sha256(document["records"])
     by_plan = {row["plan"]: row for row in document["records"]}
     assert by_plan["payg"]["rates"]["uncached_input_per_million"]["amount"] == "2"
+    assert by_plan["payg"]["rates"]["tool_fee_per_call"] is None
     assert by_plan["payg"]["subscription"] is None
     assert by_plan["plus"]["rates"] is None
     assert by_plan["plus"]["subscription"]["P"]["amount"] == "20"
@@ -272,6 +277,27 @@ def test_recorded_snapshot_sample_recomputes_its_records_hash():
     text = raw.decode("utf-8")
     assert "ignore previous instructions" not in text
     assert "private-rate" not in text
+
+
+def test_export_refuses_to_migrate_and_leaves_the_database_bytes_unchanged(tmp_path):
+    db = tmp_path / "legacy.sqlite3"
+    legacy = sqlite3.connect(db)
+    legacy.execute("CREATE TABLE snapshots (id TEXT PRIMARY KEY, revision INTEGER)")
+    legacy.commit()
+    legacy.close()
+    before = db.read_bytes()
+    result = _export(db)
+    assert result.returncode != 0
+    assert result.stdout == b""
+    assert b"migration" in result.stderr
+    assert db.read_bytes() == before
+
+    ready = tmp_path / "ready.sqlite3"
+    _publish_pair(ready)
+    unchanged = ready.read_bytes()
+    exported = _export(ready)
+    assert exported.returncode == 0, exported.stderr
+    assert ready.read_bytes() == unchanged
 
 
 def test_stopped_service_export_does_not_need_an_admin_token(tmp_path, monkeypatch):

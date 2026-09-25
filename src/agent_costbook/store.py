@@ -24,6 +24,7 @@ _SUBSCRIPTION_KEYS = (
     "cost_per_task",
     "weight",
     "task_profile",
+    "baseline_group",
     "assumptions",
 )
 
@@ -82,14 +83,45 @@ def _identity(row: dict) -> tuple:
 
 
 class Store:
-    def __init__(self, path: str | Path):
+    def __init__(self, path: str | Path, *, readonly: bool = False):
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.RLock()
+        self._readonly = readonly
+        if readonly:
+            if not self.path.is_file():
+                raise StoreError("not_found")
+            self._conn = sqlite3.connect(
+                f"{self.path.resolve().as_uri()}?mode=ro",
+                uri=True,
+                check_same_thread=False,
+            )
+            self._conn.row_factory = sqlite3.Row
+            if not self._schema_ready():
+                raise StoreError("migration_required")
+            return
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         self._conn = sqlite3.connect(self.path, check_same_thread=False, isolation_level=None)
         self._conn.row_factory = sqlite3.Row
         self._conn.execute("PRAGMA foreign_keys = ON")
         self._migrate()
+
+    def _schema_ready(self) -> bool:
+        tables = {
+            row[0]
+            for row in self._conn.execute(
+                "SELECT name FROM sqlite_master WHERE type = 'table'"
+            )
+        }
+        if "publisher_identity" not in tables or "snapshots" not in tables or "records" not in tables:
+            return False
+        snapshot_columns = {row[1] for row in self._conn.execute("PRAGMA table_info(snapshots)")}
+        record_columns = {row[1] for row in self._conn.execute("PRAGMA table_info(records)")}
+        if "formula_version" not in snapshot_columns or "subscription_json" not in record_columns:
+            return False
+        publisher = self._conn.execute(
+            "SELECT 1 FROM publisher_identity WHERE singleton = 1"
+        ).fetchone()
+        return publisher is not None
 
     def _migrate(self) -> None:
         self._conn.executescript(
@@ -513,6 +545,16 @@ class Store:
     @_locked
     def snapshot_exists(self, snapshot_id: str) -> bool:
         return self._resolve_snapshot(snapshot_id) is not None
+
+    @_locked
+    def revision_of(self, snapshot_id: str | None) -> int | None:
+        if snapshot_id is None:
+            row = self._conn.execute(
+                "SELECT revision FROM snapshots ORDER BY revision DESC LIMIT 1"
+            ).fetchone()
+            return None if row is None else row["revision"]
+        resolved = self._resolve_snapshot(snapshot_id)
+        return None if resolved is None else resolved["revision"]
 
     @_locked
     def snapshot_for_export(self, data_version: int | None) -> sqlite3.Row | None:

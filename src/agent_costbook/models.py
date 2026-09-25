@@ -56,6 +56,7 @@ class SubscriptionIn(BaseModel):
     cost_per_task: str | None = None
     weight: str | None = None
     task_profile: str | None = Field(default=None, max_length=120)
+    baseline_group: str | None = Field(default=None, max_length=120)
     assumptions: list[str] = Field(default_factory=list, max_length=20)
 
     @model_validator(mode="after")
@@ -116,6 +117,21 @@ class ContributionIn(BaseModel):
         return self
 
 
+class PrivateSubscriptionIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    monthly_price: str | None = None
+
+    @field_validator("monthly_price")
+    @classmethod
+    def price_is_non_negative(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        number = parse_decimal(value)
+        if number is None or number < 0:
+            raise ValueError("monthly_price must be a finite non-negative decimal string")
+        return value
+
+
 class CandidateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     candidate_id: str = Field(min_length=1, max_length=160)
@@ -128,6 +144,7 @@ class CandidateIn(BaseModel):
     window_start: str | None = Field(default=None, max_length=64)
     window_end: str | None = Field(default=None, max_length=64)
     private_rates: RateCard | None = None
+    private_subscription: PrivateSubscriptionIn | None = None
     marginal_cash: str | None = None
 
     @field_validator("marginal_cash")

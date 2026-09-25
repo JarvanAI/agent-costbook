@@ -1,4 +1,8 @@
+import json
+import subprocess
+import sys
 from decimal import Decimal
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -326,3 +330,80 @@ def test_empty_catalog_stays_empty_when_a_draft_is_published_between_lookups(tmp
     assert [item["metrics"] for item in results] == [None, None]
     assert calls["count"] == 2
     assert store.catalog(None)[0]["model"] == "synthetic-m4"
+
+
+def test_http_envelope_matches_export_and_private_plan_price_is_not_stored(tmp_path):
+    client = _client(tmp_path)
+    payload = synthetic_contribution()
+    payload["records"][0]["subscription"] = {
+        "monthly_price": "20",
+        "price_period": "month",
+        "quota_multiplier": "2",
+        "baseline_api_budget": "100",
+        "utilization": "0.5",
+        "cost_per_task": "0.5",
+        "weight": "1",
+        "task_profile": "coding",
+    }
+    created, published = _publish(client, payload)
+    catalog = client.get("/v1/catalog").json()
+    assert catalog["data_version"] == 1
+    assert catalog["snapshot_id"] == "snap-1"
+    assert catalog["formula_version"] == "ac-formulas-v1"
+    assert catalog["publisher_id"]
+    missing = client.get("/v1/catalog", params={"snapshot_id": "snap-99"})
+    assert missing.status_code == 404
+    db = tmp_path / "api.sqlite3"
+    exported = subprocess.run(
+        [sys.executable, "-m", "agent_costbook.export", "--db", str(db), "--data-version", "1"],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        check=False,
+    )
+    assert exported.returncode == 0, exported.stderr
+    document = json.loads(exported.stdout)
+    assert document["content_sha256"] == catalog["content_sha256"]
+    assert document["data_version"] == catalog["data_version"]
+    assert document["formula_version"] == catalog["formula_version"]
+    secret = "9.876"
+    estimate = client.post(
+        "/v1/estimates",
+        json={
+            "method": "M6",
+            "currency": "USD",
+            "candidates": [
+                {
+                    "candidate_id": "private-plan",
+                    "provider": "example",
+                    "channel": "api",
+                    "model": "synthetic-m4",
+                    "plan": "payg",
+                    "feature_scope": "text",
+                    "private_subscription": {"monthly_price": secret},
+                }
+            ],
+        },
+    )
+    assert estimate.status_code == 200, estimate.text
+    body = estimate.json()
+    assert body["data_version"] == 1
+    assert body["snapshot_id"] == "snap-1"
+    assert body["formula_version"] == "ac-formulas-v1"
+    assert body["content_sha256"] == catalog["content_sha256"]
+    result = body["results"][0]
+    assert result["formula_version"] == "m6-v1"
+    assert result["record_snapshot_id"] == published["snapshot_id"]
+    assert result["subscription_provenance"]["monthly_price"] == "request_override"
+    assert secret not in " ".join(result["assumptions"])
+    again = client.get("/v1/catalog").json()
+    stored = again["records"][0]["subscription"]["monthly_price"]
+    assert stored == "20"
+    reread = subprocess.run(
+        [sys.executable, "-m", "agent_costbook.export", "--db", str(db)],
+        cwd=Path(__file__).resolve().parents[1],
+        capture_output=True,
+        check=False,
+    )
+    assert reread.returncode == 0, reread.stderr
+    assert secret not in reread.stdout.decode()
+    assert created["contribution_id"]

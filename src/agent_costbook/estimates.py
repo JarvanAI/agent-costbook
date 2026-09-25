@@ -140,27 +140,26 @@ def _finish_subscription(
     method: str,
     metrics: dict,
     cash: str | None,
-    quota: Decimal | None,
     api_equivalent: Decimal | None,
 ) -> dict:
-    if cash is not None:
-        metrics["cash_increment"] = cash
-    if quota is not None:
-        metrics["quota_metric"] = money_text(quota)
+    metrics["cash_increment"] = cash
+    if cash is None and "cash_increment" not in result["missing_fields"]:
+        result["missing_fields"].append("cash_increment")
+    metrics["quota_consumption"] = None
+    if "quota_consumption" not in result["missing_fields"]:
+        result["missing_fields"].append("quota_consumption")
     if api_equivalent is not None:
         metrics["api_equivalent"] = money_text(api_equivalent)
     elif "api_equivalent" not in result["missing_fields"]:
         result["missing_fields"].append("api_equivalent")
     result["metrics"] = metrics
     per = f"{currency}_per_quota_unit" if method == "M1" else f"{currency}_per_task"
-    units = {"K": per, "amortization": per}
+    units = {"K": per, "amortization": per, "quota_consumption": "tasks"}
     if "N" in metrics:
         units["N"] = "tasks"
-    if "quota_metric" in metrics:
-        units["quota_metric"] = "quota_multiplier"
     if "api_equivalent" in metrics:
         units["api_equivalent"] = f"{currency}_per_task"
-    if "cash_increment" in metrics:
+    if cash is not None:
         units["cash_increment"] = currency
     result["units"] = units
     return result
@@ -187,7 +186,6 @@ def _evaluate_subscription(
             "baseline_api_budget",
             "utilization",
             "cost_per_task",
-            "weight",
         ),
     }[method]
     rules = {
@@ -212,6 +210,14 @@ def _evaluate_subscription(
             return _invalid(result)
         if number is not None:
             values[key] = number
+    period = subscription.get("price_period")
+    if period is not None and period != "month":
+        return _invalid(result, "price_period_not_monthly")
+    if period is None and "price_period" not in missing:
+        missing.append("price_period")
+    if method == "M6" and "weight" not in values:
+        values["weight"] = Decimal("1")
+        result["assumptions"].append("default_weight_one")
     measured = values.get("measured_tasks")
     if method == "M2" and measured is None:
         for key in ("quota_multiplier", "baseline_tasks", "utilization"):
@@ -224,7 +230,6 @@ def _evaluate_subscription(
     if result["status"] == "invalid_input":
         return result
     price = values["monthly_price"]
-    multiplier = values.get("quota_multiplier")
     api_equivalent = values.get("cost_per_task")
 
     if method == "M1":
@@ -238,7 +243,6 @@ def _evaluate_subscription(
             method=method,
             metrics={"K": money_text(cost), "amortization": money_text(cost)},
             cash=cash if isinstance(cash, str) else None,
-            quota=divisor,
             api_equivalent=api_equivalent,
         )
     if method == "M2" and measured is not None:
@@ -255,7 +259,6 @@ def _evaluate_subscription(
                 method=method,
                 metrics={"N": "0", "K": None, "amortization": None},
                 cash=cash if isinstance(cash, str) else None,
-                quota=multiplier,
                 api_equivalent=api_equivalent,
             )
         task_count = (
@@ -272,7 +275,6 @@ def _evaluate_subscription(
             method=method,
             metrics={"N": "0", "K": None, "amortization": None},
             cash=cash if isinstance(cash, str) else None,
-            quota=multiplier,
             api_equivalent=api_equivalent,
         )
     if method == "M6":
@@ -300,9 +302,21 @@ def _evaluate_subscription(
             "amortization": money_text(cost),
         },
         cash=cash if isinstance(cash, str) else None,
-        quota=multiplier,
         api_equivalent=api_equivalent,
     )
+
+
+def _same_borrow_scope(record: dict, reference: dict) -> bool:
+    if not record.get("currency") or record.get("currency") != reference.get("currency"):
+        return False
+    if record.get("feature_scope") != reference.get("feature_scope"):
+        return False
+    left = record.get("subscription") or {}
+    right = reference.get("subscription") or {}
+    if (left.get("price_period") or "") != (right.get("price_period") or ""):
+        return False
+    profile = left.get("task_profile") or ""
+    return bool(profile) and profile == (right.get("task_profile") or "")
 
 
 def apply_scenario(
@@ -317,6 +331,7 @@ def apply_scenario(
         not scenario
         or reference_record is None
         or reference_record.get("id") == record.get("id")
+        or not _same_borrow_scope(record, reference_record)
     ):
         return subscription, []
     reference = reference_record.get("subscription") or {}
@@ -339,21 +354,28 @@ def apply_scenario(
 
 
 def _comparison_match(method: str, left: dict, right: dict, allow_cross_provider: bool) -> bool:
-    if not left.get("currency") or left["currency"] != right.get("currency"):
+    if not left.get("currency") or left.get("currency") != right.get("currency"):
         return False
-    if left["feature_scope"] != right["feature_scope"]:
+    if left.get("feature_scope") != right.get("feature_scope"):
         return False
-    if (left["window_start"], left["window_end"]) != (right["window_start"], right["window_end"]):
+    if (left.get("window_start"), left.get("window_end")) != (
+        right.get("window_start"),
+        right.get("window_end"),
+    ):
+        return False
+    if (left.get("price_period") or "") != (right.get("price_period") or ""):
         return False
     if method == "M1":
-        return left["provider"] == right["provider"]
-    if left["model"] != right["model"] or left["effort"] != right["effort"]:
+        group = left.get("baseline_group") or ""
+        return bool(group) and group == (right.get("baseline_group") or "")
+    profile = left.get("task_profile") or ""
+    if not profile or profile != (right.get("task_profile") or ""):
         return False
-    if left["task_profile"] != right["task_profile"]:
-        return False
-    if left["provider"] != right["provider"] and not allow_cross_provider:
-        return False
-    return True
+    if method == "M6" and left.get("has_own_budget") and right.get("has_own_budget"):
+        return True
+    if method == "M2" and left.get("has_own_tasks") and right.get("has_own_tasks"):
+        return True
+    return bool(allow_cross_provider)
 
 
 def apply_reference_comparison(
@@ -442,6 +464,7 @@ def evaluate_candidate(
     marginal_cash: str | None = None,
     subscription_override: dict | None = None,
     scenario_notes: list[str] | None = None,
+    private_subscription: dict | None = None,
 ) -> dict:
     result = _result(candidate_id, method, record)
     if method not in _FORMULAS:
@@ -466,13 +489,24 @@ def evaluate_candidate(
                 **dict(record.get("subscription") or {}),
                 **subscription_override,
             }
-        return _evaluate_subscription(
+        notes = list(scenario_notes or [])
+        private_price = (private_subscription or {}).get("monthly_price")
+        if private_price is not None:
+            working["subscription"] = {
+                **dict(working.get("subscription") or {}),
+                "monthly_price": private_price,
+            }
+            notes.append("request_private_subscription")
+        evaluated = _evaluate_subscription(
             result,
             method,
             working,
             marginal_cash,
-            scenario_notes or [],
+            notes,
         )
+        if private_price is not None:
+            evaluated["subscription_provenance"] = {"monthly_price": "request_override"}
+        return evaluated
 
     rates = _effective_rates(record, private_rates, result)
     if result["status"] == "invalid_input":
@@ -484,8 +518,37 @@ def evaluate_candidate(
         for key in rates
     }
     if method == "M0":
-        result["metrics"] = dict(rates)
-        result["units"] = {key: f"{record['currency']}_per_million_tokens" for key in rates}
+        metrics = dict(rates)
+        units = {key: f"{record['currency']}_per_million_tokens" for key in rates}
+        subscription = dict(record.get("subscription") or {})
+        private_price = (private_subscription or {}).get("monthly_price")
+        if private_price is not None:
+            subscription["monthly_price"] = private_price
+            result["assumptions"].append("request_private_subscription")
+            result["subscription_provenance"] = {"monthly_price": "request_override"}
+        if subscription:
+            for key in (
+                "monthly_price",
+                "quota_multiplier",
+                "baseline_tasks",
+                "measured_tasks",
+                "baseline_api_budget",
+                "utilization",
+                "cost_per_task",
+                "weight",
+            ):
+                value = subscription.get(key)
+                metrics[key] = value
+                if value is None:
+                    result["missing_fields"].append(key)
+                else:
+                    units[key] = (
+                        record["currency"]
+                        if key in {"monthly_price", "baseline_api_budget", "cost_per_task"}
+                        else "count"
+                    )
+        result["metrics"] = metrics
+        result["units"] = units
         return result
 
     supplied = usage or {}
