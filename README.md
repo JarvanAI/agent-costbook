@@ -1,10 +1,12 @@
 # agent-costbook
 
 Local service for traceable AI model pricing, subscription amortization, and
-per-task API cost estimates. Version 0.2 stores evidence, research Markdown,
+per-task API cost estimates. Version 0.3 stores evidence, research Markdown,
 API rates, and subscription inputs in SQLite. It calculates M0 display, M1
 quota price, M2 task amortization, M4 task cost, and M6 budget amortization.
-M3, M5, and M7 respond with `unsupported_method`.
+M3, M5, and M7 respond with `unsupported_method`. A snapshot whose
+`formula_version` is not `ac-formulas-v1` is refused as `unsupported_formula`
+instead of being recalculated with the current formulas.
 
 Design notes live in `.docs/`, which is outside this product Git history.
 
@@ -45,7 +47,27 @@ candidate with missing data. The envelope `formula_version` is the formula set. 
 ```sh
 uv run agent-costbook-export --db agent_costbook.sqlite3
 uv run agent-costbook-export --db agent_costbook.sqlite3 --data-version 1
+uv run ac estimate --snapshot snapshot.json --request examples/estimate-request.json --publisher "$PUBLISHER_ID"
+uv run ac collect --once --db agent_costbook.sqlite3
 ```
+
+`ac estimate` reads one published snapshot file, checks its kind, schema,
+publisher, `snap-N` version, record hash, and formula set, then uses the same
+calculation core as `POST /v1/estimates`. It does not rebuild a database.
+Publications written by this version include `scope.task_profile` and
+`scope.baseline_group` so a reference comparison can be repeated offline.
+Older snapshot files keep their original bytes and do not gain those keys on
+upgrade. For those files, candidate metrics are still calculated, and a
+reference comparison returns `comparison: unavailable` rather than a rank.
+`read_view.freshness.stale` stays null unless both a timestamp and `--now`
+are supplied. `record_snapshot_id` is the service's internal id; the file
+carries `snapshot_id` (`snap-N`) and offline results leave the internal id empty.
+
+`ac collect --once` is one scheduled tick for two public OpenRouter sources:
+the model catalog and the fixed `openai/gpt-4o-mini` endpoints page. Put it
+on a timer. A failed fetch, a changed page layout, or disagreeing prices keep
+the previous snapshot active. Unknown prices are omitted, not stored as 0.
+The service does not run a research agent.
 
 ## HTTP
 

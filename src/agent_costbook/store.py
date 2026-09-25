@@ -7,10 +7,11 @@ import sqlite3
 import threading
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 FORMULA_SET = "ac-formulas-v1"
+EXPORT_GENERATION = 2
 MAX_SAFE_INT = 9007199254740991
 _PUBLIC_SNAPSHOT = re.compile(r"^snap-([1-9][0-9]*)$")
 _SUBSCRIPTION_KEYS = (
@@ -161,7 +162,18 @@ class Store:
                 contribution_id TEXT NOT NULL,
                 published_at TEXT NOT NULL,
                 revision INTEGER NOT NULL,
-                formula_version TEXT
+                formula_version TEXT,
+                export_generation INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS collector_jobs (
+                source_id TEXT PRIMARY KEY,
+                interval_seconds INTEGER NOT NULL,
+                next_run_at TEXT NOT NULL,
+                attempt INTEGER NOT NULL,
+                max_attempts INTEGER NOT NULL,
+                last_status TEXT,
+                last_error TEXT,
+                last_checked_at TEXT
             );
             CREATE TABLE IF NOT EXISTS records (
                 id TEXT PRIMARY KEY,
@@ -188,6 +200,7 @@ class Store:
             """
         )
         self._add_column("snapshots", "formula_version", "TEXT")
+        self._add_column("snapshots", "export_generation", "INTEGER")
         self._add_column("records", "subscription_json", "TEXT")
         self._conn.execute(
             """
@@ -414,10 +427,18 @@ class Store:
                 self._conn.execute(
                     """
                     INSERT INTO snapshots (
-                        id, contribution_id, published_at, revision, formula_version
-                    ) VALUES (?, ?, ?, ?, ?)
+                        id, contribution_id, published_at, revision, formula_version,
+                        export_generation
+                    ) VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (snapshot_id, contribution_id, published_at, revision, FORMULA_SET),
+                    (
+                        snapshot_id,
+                        contribution_id,
+                        published_at,
+                        revision,
+                        FORMULA_SET,
+                        EXPORT_GENERATION,
+                    ),
                 )
                 self._conn.execute(
                     "UPDATE records SET snapshot_id = ? WHERE contribution_id = ?",
@@ -519,6 +540,91 @@ class Store:
 
     def close(self) -> None:
         self._conn.close()
+
+    @_locked
+    def ensure_collector_job(
+        self,
+        source_id: str,
+        *,
+        interval_seconds: int,
+        max_attempts: int,
+        now: str,
+    ) -> None:
+        existing = self._conn.execute(
+            "SELECT source_id FROM collector_jobs WHERE source_id = ?",
+            (source_id,),
+        ).fetchone()
+        if existing is not None:
+            return
+        self._conn.execute(
+            """
+            INSERT INTO collector_jobs (
+                source_id, interval_seconds, next_run_at, attempt, max_attempts
+            ) VALUES (?, ?, ?, 0, ?)
+            """,
+            (source_id, interval_seconds, now, max_attempts),
+        )
+
+    @_locked
+    def collector_job(self, source_id: str) -> dict:
+        row = self._conn.execute(
+            "SELECT * FROM collector_jobs WHERE source_id = ?",
+            (source_id,),
+        ).fetchone()
+        if row is None:
+            raise StoreError("not_found")
+        return {key: row[key] for key in row.keys()}
+
+    @_locked
+    def schedule_collector_job(
+        self,
+        source_id: str,
+        *,
+        now: str,
+        delay_seconds: int,
+        attempt: int,
+        status: str,
+        error: str | None,
+    ) -> None:
+        next_run = (datetime.fromisoformat(now) + timedelta(seconds=delay_seconds)).isoformat()
+        self._conn.execute(
+            """
+            UPDATE collector_jobs
+            SET next_run_at = ?, attempt = ?, last_status = ?, last_error = ?,
+                last_checked_at = ?
+            WHERE source_id = ?
+            """,
+            (next_run, attempt, status, error, now, source_id),
+        )
+
+    @_locked
+    def conflict_summaries(self) -> list[dict]:
+        rows = self._conn.execute(
+            """
+            SELECT contributions.id AS contribution_id, records.provider, records.channel,
+                   records.model, records.plan, records.rates_json
+            FROM contributions
+            JOIN records ON records.contribution_id = contributions.id
+            WHERE contributions.status = 'conflict'
+            ORDER BY contributions.id, records.id
+            """
+        ).fetchall()
+        grouped: dict[str, dict] = {}
+        for row in rows:
+            item = grouped.setdefault(
+                row["contribution_id"],
+                {"contribution_id": row["contribution_id"], "rates": []},
+            )
+            item["rates"].append(
+                {
+                    "provider": row["provider"],
+                    "channel": row["channel"],
+                    "model": row["model"],
+                    "plan": row["plan"],
+                    "rates": json.loads(row["rates_json"]),
+                }
+            )
+        return list(grouped.values())
 
     @_locked
     def publisher_id(self) -> str:

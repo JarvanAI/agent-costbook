@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 RATE_KEYS = (
@@ -608,3 +609,101 @@ def evaluate_candidate(
     result["metrics"] = {"cost": money_text(total), "currency": record["currency"]}
     result["units"] = {"cost": record["currency"]}
     return result
+
+
+def freshness_view(
+    published_at: str | None,
+    *,
+    now: str | None = None,
+    max_age_seconds: int | None = None,
+) -> dict:
+    view = {"published_at": published_at, "stale": None}
+    if not published_at or now is None or max_age_seconds is None:
+        return view
+    try:
+        published = datetime.fromisoformat(published_at)
+        current = datetime.fromisoformat(now)
+    except ValueError:
+        return view
+    if published.tzinfo is None or current.tzinfo is None:
+        return view
+    view["stale"] = (current - published).total_seconds() > max_age_seconds
+    return view
+
+
+def run_estimate(
+    *,
+    method: str,
+    usage: dict | None,
+    extra_cost: str | None,
+    currency: str | None,
+    scenario: dict | None,
+    reference_candidate_id: str | None,
+    candidates: list[dict],
+    selections: list,
+    compare: bool = True,
+) -> list[dict]:
+    paired = list(zip(candidates, selections))
+    reference_record = None
+    if reference_candidate_id:
+        for candidate, selection in paired:
+            if candidate["candidate_id"] == reference_candidate_id:
+                reference_record = selection.record
+    results = []
+    contexts = []
+    for candidate, selection in paired:
+        subscription, notes = apply_scenario(
+            selection.record,
+            reference_record,
+            scenario,
+        )
+        result = evaluate_candidate(
+            candidate_id=candidate["candidate_id"],
+            method=method,
+            usage=usage,
+            extra_cost=extra_cost,
+            currency=currency,
+            private_rates=candidate.get("private_rates") or None,
+            record=selection.record,
+            conflict=selection.conflict,
+            marginal_cash=candidate.get("marginal_cash"),
+            subscription_override=subscription,
+            scenario_notes=notes,
+            private_subscription=candidate.get("private_subscription") or None,
+        )
+        result["record_snapshot_id"] = (
+            selection.record.get("snapshot_id") if selection.record else None
+        )
+        record = selection.record or {}
+        stored = record.get("subscription") or {}
+        contexts.append(
+            {
+                "candidate_id": candidate["candidate_id"],
+                "provider": record.get("provider", candidate["provider"]),
+                "feature_scope": record.get("feature_scope", candidate["feature_scope"]),
+                "window_start": record.get("window_start") or "",
+                "window_end": record.get("window_end") or "",
+                "currency": record.get("currency"),
+                "model": record.get("model", candidate["model"]),
+                "effort": record.get("effort", candidate["effort"]),
+                "task_profile": stored.get("task_profile") or "",
+                "price_period": stored.get("price_period") or "",
+                "baseline_group": stored.get("baseline_group") or "",
+                "has_own_budget": bool(stored.get("baseline_api_budget")),
+                "has_own_tasks": bool(stored.get("baseline_tasks") or stored.get("measured_tasks")),
+            }
+        )
+        results.append(result)
+    if reference_candidate_id and compare:
+        allow_cross_provider = bool(
+            scenario
+            and (scenario.get("equal_baseline_budget") or scenario.get("equal_baseline_tasks"))
+        )
+        results = apply_reference_comparison(
+            method,
+            results,
+            contexts,
+            reference_candidate_id=reference_candidate_id,
+            allow_cross_provider=allow_cross_provider,
+        )
+    return results

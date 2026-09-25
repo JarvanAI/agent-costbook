@@ -47,7 +47,14 @@ def _canonical(value: object) -> bytes:
     ).encode("utf-8")
 
 
-def _export_record(row: dict, evidence: dict[str, dict]) -> dict:
+def _export_generation(snapshot) -> int | None:
+    if "export_generation" not in snapshot.keys():
+        return None
+    value = snapshot["export_generation"]
+    return None if value is None else int(value)
+
+
+def _export_record(row: dict, evidence: dict[str, dict], generation: int | None = None) -> dict:
     stored = row.get("subscription") or {}
     missing: list[str] = []
     rates = row.get("rates") or {}
@@ -105,6 +112,9 @@ def _export_record(row: dict, evidence: dict[str, dict]) -> dict:
             "start": row.get("window_start") or None,
             "end": row.get("window_end") or None,
         }
+    if generation == 2:
+        scope["baseline_group"] = stored.get("baseline_group") or None
+        scope["task_profile"] = stored.get("task_profile") or None
     return {
         "record_id": row["id"],
         "status": "ok",
@@ -131,7 +141,8 @@ def build_document(store: Store, data_version: int | None) -> dict:
     evidence = store.evidence_metadata(
         [evidence_id for row in rows for evidence_id in row.get("evidence_ids") or []]
     )
-    records = [_export_record(row, evidence) for row in rows]
+    generation = _export_generation(snapshot)
+    records = [_export_record(row, evidence, generation) for row in rows]
     records.sort(key=lambda item: item["record_id"])
     return {
         "kind": "agent-costbook.snapshot",

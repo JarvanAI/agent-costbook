@@ -1,0 +1,21 @@
+{
+  "method": "M4",
+  "currency": "USD",
+  "usage": {
+    "uncached_input": "1000",
+    "cache_read": "2000",
+    "cache_write": "500",
+    "billed_output": "400"
+  },
+  "extra_cost": "0.01",
+  "candidates": [
+    {
+      "candidate_id": "synthetic-m4",
+      "provider": "example",
+      "channel": "api",
+      "model": "synthetic-m4",
+      "plan": "payg",
+      "feature_scope": "text"
+    }
+  ]
+}
