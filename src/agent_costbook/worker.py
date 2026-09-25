@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import socket
 from datetime import datetime, timezone
 
 from agent_costbook.collectors import (
@@ -61,8 +62,13 @@ class Worker:
                 source["parse"](self.fetch(source["url"]), url=source["url"], retrieved_at=now)
                 for source in SOURCES
             ]
-        except (FetchError, TimeoutError) as exc:
-            return self._fail(now, getattr(exc, "code", "timeout"))
+        except FetchError as exc:
+            return self._fail(now, exc.code)
+        except TimeoutError:
+            return self._fail(now, "timeout")
+        except OSError as exc:
+            code = "dns" if isinstance(exc, socket.gaierror) else "transport"
+            return self._fail(now, code)
         except ParseError as exc:
             return self._fail(now, exc.code)
         return self._publish_observed(observations, now)

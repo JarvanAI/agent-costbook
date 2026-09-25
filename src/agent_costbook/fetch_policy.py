@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import http.client
+import inspect
 import io
 import ipaddress
 import socket
 import ssl
+import threading
 import time
 from dataclasses import dataclass
 from urllib.parse import urlsplit, urljoin
@@ -82,12 +84,18 @@ def fetch_public(
         literal = ipaddress.ip_address(host)
     except ValueError:
         literal = None
-    addresses = [host] if literal is not None else list(resolve(host))
+    remaining = _deadline - time.monotonic()
+    if remaining <= 0:
+        raise FetchError("timeout")
+    if literal is not None:
+        addresses = [host]
+    else:
+        addresses = _lookup(resolve, host, min(ADDRESS_BUDGET, remaining))
     if not addresses or any(not _public_ip(item) for item in addresses):
         raise FetchError("private_address")
     reply = None
     pinned = addresses[0]
-    last_timeout: Exception | None = None
+    last_error: Exception | None = None
     for candidate in addresses:
         remaining = _deadline - time.monotonic()
         if remaining <= 0:
@@ -97,13 +105,23 @@ def fetch_public(
             pinned = candidate
             break
         except TimeoutError as exc:
-            last_timeout = exc
+            last_error = exc
+        except OSError as exc:
+            last_error = exc
         except FetchError as exc:
-            if exc.code not in {"timeout", "transport"}:
+            if exc.code not in {"timeout", "transport", "dns"}:
                 raise
-            last_timeout = exc
+            last_error = exc
     if reply is None:
-        raise FetchError("timeout") from last_timeout
+        if isinstance(last_error, socket.gaierror):
+            raise FetchError("dns") from last_error
+        if isinstance(last_error, FetchError):
+            raise last_error
+        if isinstance(last_error, TimeoutError):
+            raise FetchError("timeout") from last_error
+        if isinstance(last_error, OSError):
+            raise FetchError("transport") from last_error
+        raise FetchError("timeout")
     status = reply.status
     headers = {str(key).lower(): value for key, value in dict(reply.headers).items()}
     if status in {301, 302, 303, 307, 308}:
@@ -129,9 +147,50 @@ def fetch_public(
     return FetchResult(url=url, status=status, body=body, pinned_ip=pinned)
 
 
-def default_resolve(host: str) -> list[str]:
+def _lookup(resolve, host: str, timeout: float) -> list[str]:
+    try:
+        parameters = inspect.signature(resolve).parameters
+    except (TypeError, ValueError):
+        parameters = {}
+    try:
+        if "timeout" in parameters:
+            found = resolve(host, timeout=timeout)
+        else:
+            found = resolve(host)
+    except socket.gaierror as exc:
+        raise FetchError("dns") from exc
+    except TimeoutError as exc:
+        raise FetchError("timeout") from exc
+    except OSError as exc:
+        raise FetchError("transport") from exc
+    return list(found)
+
+
+def default_resolve(host: str, timeout: float = ADDRESS_BUDGET) -> list[str]:
+    """Resolve within `timeout`. `socket.settimeout` does not cover `getaddrinfo`."""
+    if timeout <= 0:
+        raise FetchError("timeout")
+    box: dict = {}
+
+    def work() -> None:
+        try:
+            box["infos"] = socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM)
+        except socket.gaierror as exc:
+            box["dns"] = exc
+        except OSError as exc:
+            box["os"] = exc
+
+    thread = threading.Thread(target=work, daemon=True)
+    thread.start()
+    thread.join(timeout)
+    if thread.is_alive():
+        raise FetchError("timeout")
+    if "dns" in box:
+        raise FetchError("dns") from box["dns"]
+    if "os" in box:
+        raise FetchError("transport") from box["os"]
     found: list[str] = []
-    for info in socket.getaddrinfo(host, 443, type=socket.SOCK_STREAM):
+    for info in box.get("infos") or []:
         address = info[4][0]
         if address not in found:
             found.append(address)
@@ -158,8 +217,10 @@ def default_opener(url: str, pinned_ip: str, timeout: float, *, ssl_context=None
         "Connection: close\r\n\r\n"
     ).encode("ascii")
     remaining = deadline - time.monotonic()
-    raw = socket.create_connection((pinned_ip, port), max(remaining, 0.01))
+    raw = None
+    tls = None
     try:
+        raw = socket.create_connection((pinned_ip, port), max(remaining, 0.01))
         context = ssl_context or ssl.create_default_context()
         tls = context.wrap_socket(raw, server_hostname=host)
         tls.sendall(request)
@@ -169,12 +230,17 @@ def default_opener(url: str, pinned_ip: str, timeout: float, *, ssl_context=None
             max_bytes=MAX_BYTES,
             max_header_bytes=MAX_HEADER_BYTES,
         )
+    except FetchError:
+        raise
     except TimeoutError as exc:
-        raw.close()
         raise FetchError("timeout") from exc
     except OSError as exc:
-        raw.close()
-        raise FetchError("timeout") from exc
+        raise FetchError("transport") from exc
+    finally:
+        if tls is not None:
+            tls.close()
+        if raw is not None and raw is not tls:
+            raw.close()
 
 
 class _LimitedSocket:
@@ -252,7 +318,12 @@ def read_http_response(sock, *, deadline: float, max_bytes: int, max_header_byte
             total += len(piece)
         if total > max_bytes:
             raise FetchError("too_large")
+        # read(amt) returns a short body instead of IncompleteRead when
+        # Content-Length is not satisfied.
+        if not response.chunked and response.length not in (None, 0):
+            raise FetchError("transport")
         headers = {key.lower(): value for key, value in response.getheaders()}
         return _Reply(response.status, headers, b"".join(chunks))
     finally:
         response.close()
+        wrapped.close()

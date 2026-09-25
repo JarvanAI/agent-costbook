@@ -214,6 +214,38 @@ def test_concurrent_publish_does_not_leave_half_a_snapshot(tmp_path):
     store.close()
 
 
+def test_dns_failure_keeps_the_snapshot_and_schedules_a_retry(tmp_path):
+    import socket
+
+    from agent_costbook.fetch_policy import fetch_public
+
+    db = tmp_path / "dns.sqlite3"
+    store = Store(db)
+
+    def agree(url):
+        if url.endswith("/endpoints"):
+            return _body("openrouter-endpoints-agree.json")
+        return _body("openrouter-catalog-recorded.json")
+
+    assert _worker(store, agree).tick(NOW)["status"] == "published"
+    revision = store.revision_of(None)
+
+    def fail_dns(url):
+        def resolve(host):
+            raise socket.gaierror(socket.EAI_AGAIN, "temporary")
+
+        return fetch_public(url, resolve=resolve, opener=lambda *args: None).body
+
+    failed = _worker(store, fail_dns).tick(LATER)
+    assert failed["status"] == "failed"
+    assert failed["error"] == "dns"
+    assert store.revision_of(None) == revision
+    job = store.collector_job("openrouter-public")
+    assert job["attempt"] == 1
+    assert job["next_run_at"] > LATER
+    store.close()
+
+
 def test_bounded_loop_retries_from_the_saved_schedule_and_stops(tmp_path):
     from datetime import datetime, timedelta
 

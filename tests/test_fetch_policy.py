@@ -231,6 +231,145 @@ def test_redirect_chain_shares_one_deadline():
     assert seen[1] < seen[0] - 0.1
 
 
+def _closed(sock: socket.socket) -> bool:
+    try:
+        sock.getpeername()
+    except OSError:
+        return True
+    return False
+
+
+def test_short_content_length_is_rejected_and_the_socket_is_closed():
+    client, server = socket.socketpair()
+    server.sendall(
+        b"HTTP/1.1 200 OK\r\nContent-Length: 100\r\nConnection: close\r\n\r\n{}"
+    )
+    server.shutdown(socket.SHUT_WR)
+    try:
+        read_http_response(
+            client,
+            deadline=time.monotonic() + 2,
+            max_bytes=1000,
+            max_header_bytes=8192,
+        )
+    except FetchError as exc:
+        assert exc.code == "transport"
+    else:
+        raise AssertionError("Content-Length 100 with body {} was accepted")
+    assert _closed(client)
+    server.close()
+
+
+def test_complete_content_length_closes_the_socket():
+    client, server = socket.socketpair()
+    server.sendall(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
+    server.shutdown(socket.SHUT_WR)
+    reply = read_http_response(
+        client,
+        deadline=time.monotonic() + 2,
+        max_bytes=1000,
+        max_header_bytes=8192,
+    )
+    assert reply.body == b"{}"
+    assert _closed(client)
+    server.close()
+
+
+def test_handshake_and_send_failures_close_the_owned_socket(monkeypatch):
+    from agent_costbook.fetch_policy import default_opener
+
+    client, server = socket.socketpair()
+
+    def fake_connect(address, timeout):
+        return client
+
+    monkeypatch.setattr(socket, "create_connection", fake_connect)
+
+    def fail_handshake(self, sock, server_hostname=None):
+        raise OSError("handshake failed")
+
+    monkeypatch.setattr("ssl.SSLContext.wrap_socket", fail_handshake)
+    try:
+        default_opener("https://catalog.example/models", "1.1.1.1", 2)
+    except FetchError as exc:
+        assert exc.code == "transport"
+    else:
+        raise AssertionError("handshake error escaped")
+    assert _closed(client)
+    server.close()
+
+    client, server = socket.socketpair()
+
+    def fake_connect_again(address, timeout):
+        return client
+
+    monkeypatch.setattr(socket, "create_connection", fake_connect_again)
+
+    def fail_send(self, sock, server_hostname=None):
+        class _Broken:
+            def sendall(self, data):
+                raise OSError("send failed")
+
+            def close(self):
+                sock.close()
+
+        return _Broken()
+
+    monkeypatch.setattr("ssl.SSLContext.wrap_socket", fail_send)
+    try:
+        default_opener("https://catalog.example/models", "1.1.1.1", 2)
+    except FetchError as exc:
+        assert exc.code == "transport"
+    else:
+        raise AssertionError("send error escaped")
+    assert _closed(client)
+    server.close()
+
+
+def test_dns_and_connect_errors_become_fetch_errors_within_a_deadline(monkeypatch):
+    from agent_costbook.fetch_policy import default_resolve
+
+    def resolve(host):
+        raise socket.gaierror(socket.EAI_AGAIN, "temporary")
+
+    def opener(url, pinned_ip, timeout):
+        raise AssertionError("opener ran after a DNS failure")
+
+    try:
+        fetch_public("https://catalog.example/models", resolve=resolve, opener=opener)
+    except FetchError as exc:
+        assert exc.code == "dns"
+    else:
+        raise AssertionError("gaierror escaped")
+
+    def resolve_ok(host):
+        return ["1.1.1.1"]
+
+    def refuse(url, pinned_ip, timeout):
+        raise OSError("connection refused")
+
+    try:
+        fetch_public("https://catalog.example/models", resolve=resolve_ok, opener=refuse)
+    except FetchError as exc:
+        assert exc.code == "transport"
+    else:
+        raise AssertionError("connect OSError escaped")
+
+    def slow_lookup(*args, **kwargs):
+        time.sleep(2)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("1.1.1.1", 443))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", slow_lookup)
+    started = time.monotonic()
+    try:
+        default_resolve("catalog.example", timeout=0.2)
+    except FetchError as exc:
+        assert exc.code == "timeout"
+    else:
+        raise AssertionError("name resolution ignored its deadline")
+    assert time.monotonic() - started < 1
+
+
 def test_production_fetch_has_no_private_network_switch():
     assert "allow_private" not in inspect.signature(fetch_public).parameters
     assert set(Settings.__dataclass_fields__) == {"db_path", "admin_token"}
