@@ -55,6 +55,7 @@ class RecordIn(BaseModel):
     currency: str = Field(min_length=1, max_length=12)
     rates: RateCard
     evidence_indexes: list[int] = Field(min_length=1)
+    base_snapshot_id: str | None = Field(default=None, max_length=80)
 
 
 class ContributionIn(BaseModel):

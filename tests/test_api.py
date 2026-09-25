@@ -192,3 +192,73 @@ def test_idempotent_replay_and_conflict_publish(tmp_path):
     assert published.status_code == 409
     assert published.json()["status"] == "conflict"
     assert client.get("/v1/catalog").json()["records"] == []
+
+
+def test_one_estimate_request_stays_on_the_revision_pinned_before_selection(tmp_path):
+    client = _client(tmp_path)
+    _, published = _publish(client, synthetic_contribution())
+    store = client.app.state.store
+    revised = synthetic_contribution()
+    revised["records"][0]["base_snapshot_id"] = published["snapshot_id"]
+    revised["records"][0]["rates"]["uncached_input_per_million"] = "9"
+    created = client.post(
+        "/v1/contributions",
+        headers={"Authorization": "Bearer test-token"},
+        json=revised,
+    )
+    assert created.status_code == 201
+    original = store.select_record
+    calls = {"count": 0}
+
+    def publish_between_candidates(**kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            store.publish(created.json()["contribution_id"])
+        return original(**kwargs)
+
+    store.select_record = publish_between_candidates
+    try:
+        response = client.post(
+            "/v1/estimates",
+            json={
+                "method": "M4",
+                "currency": "USD",
+                "usage": {
+                    "uncached_input": "1000",
+                    "cache_read": "2000",
+                    "cache_write": "500",
+                    "billed_output": "400",
+                },
+                "extra_cost": "0.01",
+                "candidates": [
+                    {
+                        "candidate_id": "first",
+                        "provider": "example",
+                        "channel": "api",
+                        "model": "synthetic-m4",
+                        "plan": "payg",
+                        "feature_scope": "text",
+                    },
+                    {
+                        "candidate_id": "second",
+                        "provider": "example",
+                        "channel": "api",
+                        "model": "synthetic-m4",
+                        "plan": "payg",
+                        "feature_scope": "text",
+                    },
+                ],
+            },
+        )
+    finally:
+        store.select_record = original
+    assert response.status_code == 200, response.text
+    results = response.json()["results"]
+    assert [item["snapshot_id"] for item in results] == [
+        published["snapshot_id"],
+        published["snapshot_id"],
+    ]
+    assert [Decimal(item["metrics"]["cost"]) for item in results] == [
+        Decimal("0.0177"),
+        Decimal("0.0177"),
+    ]

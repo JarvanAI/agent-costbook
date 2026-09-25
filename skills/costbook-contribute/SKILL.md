@@ -29,7 +29,7 @@ curl -sS -X POST "http://127.0.0.1:8080/v1/contributions" \
   -d @contribution.json
 ```
 
-`contribution.json` has `research` (`title`, `markdown`), `evidence` (`source_kind`, `source_url`, `collector_kind`, `collector_name`, `content`, `retrieved_at`), and `records` (`provider`, `channel`, `model`, `effort`, `plan`, `feature_scope`, `currency`, `rates`, `evidence_indexes`). Rate fields are `uncached_input_per_million`, `cache_read_per_million`, `cache_write_per_million`, and `billed_output_per_million`.
+`contribution.json` has `research` (`title`, `markdown`), `evidence` (`source_kind`, `source_url`, `collector_kind`, `collector_name`, `content`, `retrieved_at`), and `records` (`provider`, `channel`, `model`, `effort`, `plan`, `feature_scope`, `currency`, `rates`, `evidence_indexes`). Rate fields are `uncached_input_per_million`, `cache_read_per_million`, `cache_write_per_million`, and `billed_output_per_million`. To replace an identity that is already published, set `base_snapshot_id` to the record version you reviewed. A missing or stale base is a conflict and does not overwrite the active record. Omitting usage does not mean zero tokens.
 
 Publish only after the draft ids look right:
 

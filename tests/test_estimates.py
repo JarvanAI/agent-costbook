@@ -109,6 +109,59 @@ def test_unimplemented_methods_are_unsupported():
         assert result["formula_version"] is None
 
 
+def test_omitted_usage_with_zero_extra_cost_is_missing_not_free():
+    for omitted in (None, {}):
+        result = _run(usage=omitted, extra_cost="0")
+        assert result["status"] == "missing_data"
+        assert result["metrics"] is None
+        assert "usage" in result["missing_fields"]
+
+
+def test_explicit_zero_token_counts_can_cost_zero_without_missing_rate():
+    result = _run(
+        usage={
+            "uncached_input": "0",
+            "cache_read": "0",
+            "cache_write": "0",
+            "billed_output": "0",
+        },
+        extra_cost="0",
+        record={
+            "snapshot_id": "snap_synthetic",
+            "published_at": "2026-09-25T00:00:00+00:00",
+            "currency": "USD",
+            "evidence_ids": ["ev_synthetic"],
+            "rates": {},
+        },
+    )
+    assert result["status"] == "ok"
+    assert Decimal(result["metrics"]["cost"]) == Decimal("0")
+
+
+def test_m0_units_follow_the_record_currency():
+    record = dict(PUBLISHED)
+    record["currency"] = "CNY"
+    result = _run(method="M0", record=record, currency="CNY")
+    assert result["status"] == "ok"
+    assert set(result["units"].values()) == {"CNY_per_million_tokens"}
+
+
+def test_invalid_usage_sets_error_code():
+    result = _run(usage={**USAGE, "output": "400"})
+    assert result["status"] == "invalid_input"
+    assert result["error_code"] == "invalid_usage"
+    assert result["metrics"] is None
+
+
+def test_private_override_provenance_does_not_reveal_the_secret_rate():
+    secret = "9.87654321"
+    result = _run(private_rates={"uncached_input_per_million": secret})
+    assert result["rate_provenance"]["uncached_input_per_million"] == "request_override"
+    assert result["rate_provenance"]["billed_output_per_million"] == "public"
+    assert secret not in str(result["rate_provenance"])
+    assert secret not in " ".join(result["assumptions"])
+
+
 def test_m0_returns_rates_without_summing_a_task_cost():
     result = _run(method="M0")
     assert result["status"] == "ok"

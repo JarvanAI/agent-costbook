@@ -98,7 +98,8 @@ class Store:
             CREATE TABLE IF NOT EXISTS snapshots (
                 id TEXT PRIMARY KEY,
                 contribution_id TEXT NOT NULL,
-                published_at TEXT NOT NULL
+                published_at TEXT NOT NULL,
+                revision INTEGER NOT NULL
             );
             CREATE TABLE IF NOT EXISTS records (
                 id TEXT PRIMARY KEY,
@@ -114,7 +115,8 @@ class Store:
                 window_end TEXT NOT NULL,
                 currency TEXT NOT NULL,
                 rates_json TEXT NOT NULL,
-                evidence_ids_json TEXT NOT NULL
+                evidence_ids_json TEXT NOT NULL,
+                base_snapshot_id TEXT NOT NULL
             );
             """
         )
@@ -172,6 +174,7 @@ class Store:
                         "currency": item["currency"],
                         "rates": rates,
                         "evidence_ids": evidence_ids,
+                        "base_snapshot_id": item.get("base_snapshot_id") or "",
                     }
                 )
             response = {
@@ -234,8 +237,8 @@ class Store:
                     INSERT INTO records (
                         id, contribution_id, snapshot_id, provider, channel, model, effort,
                         plan, feature_scope, window_start, window_end, currency,
-                        rates_json, evidence_ids_json
-                    ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        rates_json, evidence_ids_json, base_snapshot_id
+                    ) VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     [
                         (
@@ -252,14 +255,17 @@ class Store:
                             row["currency"],
                             json.dumps(row["rates"], ensure_ascii=False, sort_keys=True),
                             json.dumps(row["evidence_ids"]),
+                            row["base_snapshot_id"],
                         )
                         for row in record_rows
                     ],
                 )
                 self._conn.commit()
-            except sqlite3.IntegrityError as exc:
+            except BaseException as exc:
                 self._conn.rollback()
-                raise StoreError("idempotency_conflict") from exc
+                if isinstance(exc, sqlite3.IntegrityError):
+                    raise StoreError("idempotency_conflict") from exc
+                raise
             return response, True
 
     def publish(self, contribution_id: str) -> dict:
@@ -289,38 +295,65 @@ class Store:
             for row in rows:
                 identity = _identity(row)
                 if identity in seen:
-                    self._conn.execute(
-                        "UPDATE contributions SET status = 'conflict' WHERE id = ?",
-                        (contribution_id,),
-                    )
-                    self._conn.commit()
+                    self._mark_conflict(contribution_id)
                     raise StoreError("conflict")
                 seen.add(identity)
+            current = {
+                _identity(record): record for record in self._published_rows(None)
+            }
+            for row in rows:
+                existing = current.get(_identity(row))
+                base = row.get("base_snapshot_id") or ""
+                if existing is None:
+                    if base:
+                        self._mark_conflict(contribution_id)
+                        raise StoreError("conflict")
+                    continue
+                if base != existing["snapshot_id"]:
+                    self._mark_conflict(contribution_id)
+                    raise StoreError("conflict")
             snapshot_id = f"snap_{uuid.uuid4().hex}"
             published_at = _now()
             self._conn.execute("BEGIN")
-            self._conn.execute(
-                "INSERT INTO snapshots (id, contribution_id, published_at) VALUES (?, ?, ?)",
-                (snapshot_id, contribution_id, published_at),
-            )
-            self._conn.execute(
-                "UPDATE records SET snapshot_id = ? WHERE contribution_id = ?",
-                (snapshot_id, contribution_id),
-            )
-            self._conn.execute(
-                """
-                UPDATE contributions
-                SET status = 'published', published_snapshot_id = ?
-                WHERE id = ?
-                """,
-                (snapshot_id, contribution_id),
-            )
-            self._conn.commit()
+            try:
+                revision = self._conn.execute(
+                    "SELECT COALESCE(MAX(revision), 0) + 1 FROM snapshots"
+                ).fetchone()[0]
+                self._conn.execute(
+                    """
+                    INSERT INTO snapshots (id, contribution_id, published_at, revision)
+                    VALUES (?, ?, ?, ?)
+                    """,
+                    (snapshot_id, contribution_id, published_at, revision),
+                )
+                self._conn.execute(
+                    "UPDATE records SET snapshot_id = ? WHERE contribution_id = ?",
+                    (snapshot_id, contribution_id),
+                )
+                self._conn.execute(
+                    """
+                    UPDATE contributions
+                    SET status = 'published', published_snapshot_id = ?
+                    WHERE id = ?
+                    """,
+                    (snapshot_id, contribution_id),
+                )
+                self._conn.commit()
+            except BaseException:
+                self._conn.rollback()
+                raise
             return {
                 "contribution_id": contribution_id,
                 "status": "published",
                 "snapshot_id": snapshot_id,
             }
+
+    def _mark_conflict(self, contribution_id: str) -> None:
+        self._conn.execute(
+            "UPDATE contributions SET status = 'conflict' WHERE id = ?",
+            (contribution_id,),
+        )
+        self._conn.commit()
 
     def get_contribution(self, contribution_id: str) -> dict | None:
         with self._lock:
@@ -385,6 +418,13 @@ class Store:
         }
 
     @_locked
+    def latest_snapshot_id(self) -> str | None:
+        row = self._conn.execute(
+            "SELECT id FROM snapshots ORDER BY revision DESC LIMIT 1"
+        ).fetchone()
+        return None if row is None else row["id"]
+
+    @_locked
     def snapshot_exists(self, snapshot_id: str) -> bool:
         row = self._conn.execute(
             "SELECT 1 FROM snapshots WHERE id = ?",
@@ -396,19 +436,7 @@ class Store:
     def catalog(self, snapshot_id: str | None) -> list[dict]:
         if snapshot_id is not None and not self.snapshot_exists(snapshot_id):
             raise StoreError("not_found")
-        rows = self._published_rows(snapshot_id)
-        if snapshot_id is not None:
-            return rows
-        latest: dict[tuple, dict] = {}
-        for row in rows:
-            key = _identity(row)
-            current = latest.get(key)
-            if current is None or (row["published_at"], row["snapshot_id"]) > (
-                current["published_at"],
-                current["snapshot_id"],
-            ):
-                latest[key] = row
-        return list(latest.values())
+        return self._published_rows(snapshot_id)
 
     @_locked
     def select_record(
@@ -447,10 +475,7 @@ class Store:
         for row in rows:
             key = _identity(row)
             current = grouped.get(key)
-            if current is None or (row["published_at"], row["snapshot_id"]) > (
-                current["published_at"],
-                current["snapshot_id"],
-            ):
+            if current is None or row.get("revision", 0) > current.get("revision", 0):
                 grouped[key] = row
         if len(grouped) > 1:
             return Selection(record=None, conflict=True)
@@ -460,21 +485,37 @@ class Store:
 
     def _published_rows(self, snapshot_id: str | None) -> list[dict]:
         query = """
-            SELECT records.*, snapshots.published_at, research.id AS research_id
+            SELECT records.*, snapshots.published_at, snapshots.revision,
+                   research.id AS research_id
             FROM records
             JOIN snapshots ON snapshots.id = records.snapshot_id
             JOIN research ON research.contribution_id = records.contribution_id
         """
         params: tuple = ()
         if snapshot_id is not None:
-            query += " WHERE records.snapshot_id = ?"
-            params = (snapshot_id,)
-        rows = self._conn.execute(query, params).fetchall()
-        return [self._record_from_row(row) for row in rows]
+            target = self._conn.execute(
+                "SELECT revision FROM snapshots WHERE id = ?",
+                (snapshot_id,),
+            ).fetchone()
+            if target is None:
+                return []
+            query += " WHERE snapshots.revision <= ?"
+            params = (target["revision"],)
+        folded: dict[tuple, dict] = {}
+        for row in self._conn.execute(query, params).fetchall():
+            record = self._record_from_row(row)
+            key = _identity(record)
+            current = folded.get(key)
+            if current is None or record["revision"] > current["revision"]:
+                folded[key] = record
+        return list(folded.values())
 
     def _record_from_row(self, row: sqlite3.Row) -> dict:
-        published_at = row["published_at"] if "published_at" in row.keys() else None
-        research_id = row["research_id"] if "research_id" in row.keys() else None
+        keys = set(row.keys())
+        published_at = row["published_at"] if "published_at" in keys else None
+        research_id = row["research_id"] if "research_id" in keys else None
+        revision = row["revision"] if "revision" in keys else 0
+        base_snapshot_id = row["base_snapshot_id"] if "base_snapshot_id" in keys else ""
         return {
             "id": row["id"],
             "contribution_id": row["contribution_id"],
@@ -492,4 +533,6 @@ class Store:
             "evidence_ids": json.loads(row["evidence_ids_json"]),
             "research_id": research_id,
             "published_at": published_at,
+            "revision": revision,
+            "base_snapshot_id": base_snapshot_id,
         }

@@ -115,6 +115,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def estimates(body: EstimateIn) -> dict:
         if body.snapshot_id is not None and not store.snapshot_exists(body.snapshot_id):
             raise HTTPException(status_code=404, detail="snapshot not found")
+        pinned = body.snapshot_id if body.snapshot_id is not None else store.latest_snapshot_id()
         results = []
         for candidate in body.candidates:
             selection = store.select_record(
@@ -127,23 +128,25 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 window_start=candidate.window_start,
                 window_end=candidate.window_end,
                 currency=body.currency,
-                snapshot_id=body.snapshot_id,
+                snapshot_id=pinned,
             )
             private = None
             if candidate.private_rates is not None:
                 private = candidate.private_rates.model_dump(exclude_none=True)
-            results.append(
-                evaluate_candidate(
-                    candidate_id=candidate.candidate_id,
-                    method=body.method,
-                    usage=body.usage,
-                    extra_cost=body.extra_cost,
-                    currency=body.currency,
-                    private_rates=private or None,
-                    record=selection.record,
-                    conflict=selection.conflict,
-                )
+            result = evaluate_candidate(
+                candidate_id=candidate.candidate_id,
+                method=body.method,
+                usage=body.usage,
+                extra_cost=body.extra_cost,
+                currency=body.currency,
+                private_rates=private or None,
+                record=selection.record,
+                conflict=selection.conflict,
             )
+            result["record_snapshot_id"] = result["snapshot_id"] if selection.record else None
+            if result["status"] != "unsupported_method":
+                result["snapshot_id"] = pinned
+            results.append(result)
         return {"results": results}
 
     return app

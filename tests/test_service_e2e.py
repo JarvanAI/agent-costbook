@@ -149,6 +149,7 @@ def test_real_http_contribution_survives_restart_and_exports_markdown(tmp_path):
                 f"/v1/contributions/{first.json()['contribution_id']}/publish",
                 headers=headers,
             ).json()["snapshot_id"]
+            historical["records"][0]["base_snapshot_id"] = first_snapshot
             historical["records"][0]["rates"]["uncached_input_per_million"] = "1"
             second = client.post("/v1/contributions", headers=headers, json=historical)
             client.post(
@@ -181,5 +182,155 @@ def test_real_http_contribution_survives_restart_and_exports_markdown(tmp_path):
                 },
             )
             assert Decimal(old.json()["results"][0]["metrics"]["cost"]) == Decimal("0.0177")
+            carried = client.get("/v1/catalog", params={"snapshot_id": first_snapshot})
+            carried_rows = {row["model"]: row for row in carried.json()["records"]}
+            assert set(carried_rows) == {"openai/gpt-4o-mini", "synthetic-m4"}
+            assert carried_rows["synthetic-m4"]["rates"]["uncached_input_per_million"] == "2"
+            assert carried_rows["openai/gpt-4o-mini"]["snapshot_id"] == snapshot_id
+            whole = client.get("/v1/catalog")
+            assert {row["model"] for row in whole.json()["records"]} == {
+                "openai/gpt-4o-mini",
+                "synthetic-m4",
+            }
+    finally:
+        _stop(proc)
+
+
+def test_real_http_review_boundaries(tmp_path):
+    db = tmp_path / "review.sqlite3"
+    port = _free_port()
+    base = f"http://127.0.0.1:{port}"
+    headers = {"Authorization": "Bearer e2e-token"}
+    proc = _start(db, port)
+    try:
+        with _client(base) as client:
+            _wait_health(client, proc)
+            cny = synthetic_contribution()
+            cny["records"][0]["currency"] = "CNY"
+            cny["records"][0]["model"] = "cny-card"
+            created = client.post("/v1/contributions", headers=headers, json=cny)
+            assert created.status_code == 201, created.text
+            published = client.post(
+                f"/v1/contributions/{created.json()['contribution_id']}/publish",
+                headers=headers,
+            )
+            assert published.status_code == 200, published.text
+            shown = client.post(
+                "/v1/estimates",
+                json={
+                    "method": "M0",
+                    "currency": "CNY",
+                    "candidates": [
+                        {
+                            "candidate_id": "cny",
+                            "provider": "example",
+                            "channel": "api",
+                            "model": "cny-card",
+                            "plan": "payg",
+                            "feature_scope": "text",
+                        }
+                    ],
+                },
+            )
+            assert shown.status_code == 200, shown.text
+            units = shown.json()["results"][0]["units"]
+            assert set(units.values()) == {"CNY_per_million_tokens"}
+            missing = client.post(
+                "/v1/estimates",
+                json={
+                    "method": "M4",
+                    "currency": "CNY",
+                    "extra_cost": "0",
+                    "usage": {},
+                    "candidates": [
+                        {
+                            "candidate_id": "empty-usage",
+                            "provider": "example",
+                            "channel": "api",
+                            "model": "cny-card",
+                            "plan": "payg",
+                            "feature_scope": "text",
+                        }
+                    ],
+                },
+            )
+            assert missing.status_code == 200
+            assert missing.json()["results"][0]["status"] == "missing_data"
+            assert missing.json()["results"][0]["metrics"] is None
+            invalid = client.post(
+                "/v1/estimates",
+                json={
+                    "method": "M4",
+                    "currency": "CNY",
+                    "extra_cost": "0",
+                    "usage": {"billed_output": "1", "output": "1"},
+                    "candidates": [
+                        {
+                            "candidate_id": "overlap",
+                            "provider": "example",
+                            "channel": "api",
+                            "model": "cny-card",
+                            "plan": "payg",
+                            "feature_scope": "text",
+                        }
+                    ],
+                },
+            )
+            assert invalid.json()["results"][0]["status"] == "invalid_input"
+            assert invalid.json()["results"][0]["error_code"] == "invalid_usage"
+            secret = "4.3210987"
+            priced = client.post(
+                "/v1/estimates",
+                json={
+                    "method": "M4",
+                    "currency": "CNY",
+                    "extra_cost": "0",
+                    "usage": {"uncached_input": "0", "billed_output": "0"},
+                    "candidates": [
+                        {
+                            "candidate_id": "private",
+                            "provider": "example",
+                            "channel": "api",
+                            "model": "cny-card",
+                            "plan": "payg",
+                            "feature_scope": "text",
+                            "private_rates": {"uncached_input_per_million": secret},
+                        }
+                    ],
+                },
+            )
+            provenance = priced.json()["results"][0]["rate_provenance"]
+            assert provenance["uncached_input_per_million"] == "request_override"
+            assert provenance["billed_output_per_million"] == "public"
+            assert secret not in str(provenance)
+            other = synthetic_contribution()
+            other["records"][0]["model"] = "second-card"
+            other_created = client.post("/v1/contributions", headers=headers, json=other)
+            other_published = client.post(
+                f"/v1/contributions/{other_created.json()['contribution_id']}/publish",
+                headers=headers,
+            )
+            later_id = other_published.json()["snapshot_id"]
+            later_catalog = client.get("/v1/catalog", params={"snapshot_id": later_id})
+            assert {row["model"] for row in later_catalog.json()["records"]} == {
+                "cny-card",
+                "second-card",
+            }
+            stale = synthetic_contribution()
+            stale["records"][0]["model"] = "second-card"
+            stale["records"][0]["base_snapshot_id"] = published.json()["snapshot_id"]
+            stale["records"][0]["rates"]["uncached_input_per_million"] = "8"
+            stale_created = client.post("/v1/contributions", headers=headers, json=stale)
+            rejected = client.post(
+                f"/v1/contributions/{stale_created.json()['contribution_id']}/publish",
+                headers=headers,
+            )
+            assert rejected.status_code == 409
+            assert rejected.json()["status"] == "conflict"
+            active = {
+                row["model"]: row["rates"]["uncached_input_per_million"]
+                for row in client.get("/v1/catalog").json()["records"]
+            }
+            assert active["second-card"] == "2"
     finally:
         _stop(proc)

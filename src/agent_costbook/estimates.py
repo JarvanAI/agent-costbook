@@ -70,6 +70,8 @@ def _invalid(result: dict, assumption: str | None = None) -> dict:
     result["units"] = None
     if assumption and assumption not in result["assumptions"]:
         result["assumptions"].append(assumption)
+    if assumption == "invalid_usage":
+        result["error_code"] = "invalid_usage"
     return result
 
 
@@ -122,13 +124,22 @@ def evaluate_candidate(
         return result
     assert rates is not None
     result["formula_version"] = _FORMULAS[method]
+    result["rate_provenance"] = {
+        key: "request_override" if private_rates and key in private_rates else "public"
+        for key in rates
+    }
     if method == "M0":
         result["metrics"] = dict(rates)
-        result["units"] = {key: "USD_per_million_tokens" for key in rates}
+        result["units"] = {key: f"{record['currency']}_per_million_tokens" for key in rates}
         return result
 
-    parsed_usage: dict[str, Decimal] = {}
     supplied = usage or {}
+    if not supplied:
+        result["status"] = "missing_data"
+        result["missing_fields"] = ["usage"]
+        result["metrics"] = None
+        return result
+    parsed_usage: dict[str, Decimal] = {}
     if any(key not in ALLOWED_USAGE for key in supplied):
         return _invalid(result, "invalid_usage")
     for key, value in supplied.items():

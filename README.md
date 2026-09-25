@@ -31,8 +31,10 @@ estimate and is not written to the catalog.
 - `POST /v1/contributions`
 - `POST /v1/contributions/{id}/publish`
 
-Published snapshots stay immutable. A later publish of the same identity creates a new
-snapshot; estimates can name the old `snapshot_id`. There is no research-job endpoint.
+A snapshot is the whole catalog as of that publication. Replacing an existing identity
+requires `base_snapshot_id` of the reviewed record version. Estimates pin one catalog
+revision for every candidate. Omitting usage does not mean the tokens were zero.
+There is no research-job endpoint.
 
 ## Tests
 
