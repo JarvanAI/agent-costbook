@@ -213,6 +213,23 @@ def production_fetch(url: str) -> bytes:
     return fetch_public(url, resolve=default_resolve, opener=default_opener).body
 
 
+_STOP_SLICE_SECONDS = 0.5
+
+
+def _pause(clock, seconds: float, stop, started: float, max_runtime: float) -> bool:
+    """Sleep in short slices so stop can end a long wait."""
+    left = seconds
+    while left > 0:
+        if stop is not None and stop():
+            return False
+        if clock.monotonic() - started >= max_runtime:
+            return False
+        step = min(_STOP_SLICE_SECONDS, left)
+        clock.sleep(step)
+        left -= step
+    return True
+
+
 def collect_loop(
     store,
     fetch,
@@ -242,7 +259,8 @@ def collect_loop(
         remaining = max_runtime - (clock.monotonic() - started)
         if remaining <= 0:
             break
-        clock.sleep(min(max(wait, 0.0), remaining))
+        if not _pause(clock, min(max(wait, 0.0), remaining), stop, started, max_runtime):
+            break
     return results
 
 

@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from agent_costbook.export import build_document, render
+from agent_costbook import migrations
 from agent_costbook.migrations import SCHEMA_VERSION, MigrationError, main, upgrade_database
 from agent_costbook.observations import aggregate_observation
 from agent_costbook.store import Store
@@ -206,6 +207,97 @@ def test_failed_upgrade_leaves_the_original_bytes(tmp_path, monkeypatch):
         upgrade_database(db)
     assert db.read_bytes() == before
     assert _version(db) == 0
+
+
+def test_open_connection_keeps_writing_after_store_migration(tmp_path):
+    db = tmp_path / "shared.sqlite3"
+    holder = sqlite3.connect(db, isolation_level=None)
+    holder.execute("PRAGMA journal_mode=WAL")
+    holder.execute("CREATE TABLE kept (id INTEGER PRIMARY KEY)")
+    holder.execute("INSERT INTO kept VALUES (1)")
+    holder.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    holder.execute("INSERT INTO kept VALUES (2)")
+    holder.execute("PRAGMA user_version = 0")
+    inode = db.stat().st_ino
+    wal = Path(str(db) + "-wal")
+    assert wal.stat().st_size > 0
+    store = Store(db)
+    assert db.stat().st_ino == inode
+    holder.execute("INSERT INTO kept VALUES (3)")
+    assert store.publisher_id()
+    reader = sqlite3.connect(f"{db.resolve().as_uri()}?mode=ro", uri=True)
+    assert [row[0] for row in reader.execute("SELECT id FROM kept ORDER BY id")] == [1, 2, 3]
+    reader.close()
+    assert _version(db) == SCHEMA_VERSION
+    store.close()
+    holder.close()
+
+
+def test_partial_ddl_failure_rolls_back_schema_version_and_data(tmp_path, monkeypatch):
+    db = tmp_path / "partial.sqlite3"
+    holder = sqlite3.connect(db, isolation_level=None)
+    holder.execute("CREATE TABLE kept (id INTEGER PRIMARY KEY)")
+    holder.execute("INSERT INTO kept VALUES (4)")
+    holder.execute(
+        """
+        CREATE TABLE snapshots (
+            id TEXT PRIMARY KEY,
+            contribution_id TEXT NOT NULL,
+            published_at TEXT NOT NULL,
+            revision INTEGER NOT NULL
+        )
+        """
+    )
+    holder.execute(
+        """
+        INSERT INTO snapshots (id, contribution_id, published_at, revision)
+        VALUES ('snap_old', 'co', '2026-09-25T00:00:00+00:00', 1)
+        """
+    )
+    holder.execute("PRAGMA user_version = 0")
+    inode = db.stat().st_ino
+    real_add_column = migrations._add_column
+
+    def fail_after_earlier_ddl(connection, table, column, definition):
+        if table == "records" and column == "record_status":
+            raise sqlite3.OperationalError("partial ddl")
+        return real_add_column(connection, table, column, definition)
+
+    monkeypatch.setattr(migrations, "_add_column", fail_after_earlier_ddl)
+    with pytest.raises(sqlite3.OperationalError, match="partial ddl"):
+        upgrade_database(db)
+    assert db.stat().st_ino == inode
+    assert holder.execute("PRAGMA user_version").fetchone()[0] == 0
+    assert holder.execute("SELECT id FROM kept").fetchone()[0] == 4
+    names = {
+        row[0]
+        for row in holder.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+    }
+    assert "contributions" not in names
+    assert "observations" not in names
+    columns = [row[1] for row in holder.execute("PRAGMA table_info(snapshots)")]
+    assert "formula_version" not in columns
+    holder.execute("INSERT INTO kept VALUES (5)")
+    assert [row[0] for row in holder.execute("SELECT id FROM kept ORDER BY id")] == [4, 5]
+    holder.close()
+
+
+def test_cli_prints_a_stable_failure_code(tmp_path, monkeypatch, capsys):
+    db = tmp_path / "cli.sqlite3"
+    Store(db).close()
+    _stamp(db, 0)
+    inode = db.stat().st_ino
+
+    def boom(_connection):
+        raise RuntimeError("migration exploded")
+
+    monkeypatch.setattr("agent_costbook.migrations.apply_schema", boom)
+    assert main(["--db", str(db)]) == 2
+    captured = capsys.readouterr()
+    assert captured.err.strip() == "failed"
+    assert captured.out == ""
+    assert _version(db) == 0
+    assert db.stat().st_ino == inode
 
 
 def test_corrupt_database_is_left_unchanged(tmp_path):

@@ -290,6 +290,114 @@ def test_bounded_loop_retries_from_the_saved_schedule_and_stops(tmp_path):
     store.close()
 
 
+def test_bounded_loop_checks_stop_during_a_long_wait(tmp_path):
+    from datetime import datetime, timedelta
+
+    from agent_costbook.worker import collect_loop
+
+    class Clock:
+        def __init__(self):
+            self.now = datetime.fromisoformat("2026-09-25T00:00:00+00:00")
+            self.mono = 0.0
+            self.slices = []
+
+        def iso(self):
+            return self.now.isoformat()
+
+        def monotonic(self):
+            return self.mono
+
+        def sleep(self, seconds):
+            self.slices.append(seconds)
+            self.now += timedelta(seconds=seconds)
+            self.mono += seconds
+
+    store = Store(tmp_path / "stop.sqlite3")
+    store.ensure_collector_job(
+        "openrouter-public",
+        interval_seconds=3600,
+        max_attempts=3,
+        now="2026-09-25T00:00:00+00:00",
+    )
+    store.schedule_collector_job(
+        "openrouter-public",
+        now="2099-01-01T00:00:00+00:00",
+        delay_seconds=0,
+        attempt=0,
+        status="waiting",
+        error=None,
+    )
+    clock = Clock()
+    results = collect_loop(
+        store,
+        lambda url: b"",
+        clock=clock,
+        max_runtime=60,
+        stop=lambda: clock.mono >= 1,
+    )
+    assert [item["status"] for item in results] == ["waiting"]
+    assert clock.slices
+    assert max(clock.slices) <= 0.5
+    assert clock.mono <= 1.5
+    store.close()
+
+
+def test_sigterm_stops_a_long_collect_wait(tmp_path):
+    import os
+    import signal
+    import subprocess
+    import sys
+    import time
+    from pathlib import Path
+
+    db = tmp_path / "sigterm.sqlite3"
+    store = Store(db)
+    store.ensure_collector_job(
+        "openrouter-public",
+        interval_seconds=3600,
+        max_attempts=3,
+        now="2026-09-25T00:00:00+00:00",
+    )
+    store.schedule_collector_job(
+        "openrouter-public",
+        now="2099-01-01T00:00:00+00:00",
+        delay_seconds=0,
+        attempt=0,
+        status="waiting",
+        error=None,
+    )
+    store.close()
+    proc = subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "agent_costbook.offline",
+            "collect",
+            "--db",
+            str(db),
+            "--max-runtime",
+            "60",
+        ],
+        cwd=Path(__file__).resolve().parents[1],
+        env=os.environ.copy(),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
+    )
+    try:
+        time.sleep(0.5)
+        assert proc.poll() is None
+        proc.send_signal(signal.SIGTERM)
+        stdout, stderr = proc.communicate(timeout=1.5)
+    except Exception:
+        if proc.poll() is None:
+            proc.kill()
+            proc.wait(timeout=5)
+        raise
+    assert proc.returncode == 0, stderr
+    assert stdout.decode().strip() == "waiting"
+
+
 def test_collect_once_does_not_fetch_before_the_saved_next_run(tmp_path):
     import os
     import subprocess

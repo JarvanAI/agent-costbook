@@ -156,8 +156,14 @@ class Store:
             raise StoreError("future_schema")
         if version == SCHEMA_VERSION and self._schema_ready():
             return
-        apply_schema(self._conn)
-        self._conn.commit()
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            apply_schema(self._conn)
+        except Exception:
+            self._conn.rollback()
+            raise
+        else:
+            self._conn.commit()
 
     def create_contribution(self, payload: dict, idempotency_key: str | None) -> tuple[dict, bool]:
         digest = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()

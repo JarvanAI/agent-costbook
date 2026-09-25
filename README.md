@@ -26,10 +26,11 @@ export ACB_ADMIN_TOKEN=choose-a-local-token
 uv run uvicorn agent_costbook.api:create_app --factory --host 127.0.0.1 --port 8080
 ```
 
-Stop the service before migrating or copying the database. Migration refuses a
-schema newer than this release. Backup and restore refuse an existing
-destination and refuse to use the source path as the destination. A failed
-migration or copy leaves the source file unchanged.
+Migration changes the open database in one transaction and rolls back on
+failure. It refuses a schema newer than this release. An existing connection
+keeps the same file and can continue writing after a successful migration.
+Backup and restore refuse an existing destination and refuse to use the source
+path as the destination. A failed copy leaves the source file unchanged.
 
 ```sh
 uv run agent-costbook-migrate --db agent_costbook.sqlite3
@@ -137,8 +138,8 @@ Keep the process on `127.0.0.1`. Set `ACB_ADMIN_TOKEN` before any contribution,
 publication, observation import, or M7 read. Request fields `private_rates`,
 `marginal_cash`, and `private_subscription.monthly_price` apply only to that
 estimate. They are not written to the catalog, the export, or a log.
-Evidence and research Markdown are stored data, not instructions. Do not point
-backup, restore, or migrate at a database the service still has open.
+Evidence and research Markdown are stored data, not instructions. Backup and
+restore refuse to overwrite a file, including the database the service has open.
 
 ## Known limitations
 
