@@ -10,6 +10,10 @@ from agent_costbook.models import ContributionIn, EstimateIn
 from agent_costbook.settings import Settings, load_settings
 from agent_costbook.store import Store, StoreError
 
+# None inside the store means "read the live catalog". An estimate that starts
+# with no published snapshot must keep that empty revision for every candidate.
+_FROZEN_EMPTY_SNAPSHOT = ""
+
 
 def _authorized(settings: Settings, authorization: str | None) -> bool:
     if not settings.admin_token or not authorization or not authorization.startswith("Bearer "):
@@ -116,6 +120,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if body.snapshot_id is not None and not store.snapshot_exists(body.snapshot_id):
             raise HTTPException(status_code=404, detail="snapshot not found")
         pinned = body.snapshot_id if body.snapshot_id is not None else store.latest_snapshot_id()
+        frozen_snapshot = pinned if pinned is not None else _FROZEN_EMPTY_SNAPSHOT
         results = []
         for candidate in body.candidates:
             selection = store.select_record(
@@ -128,7 +133,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 window_start=candidate.window_start,
                 window_end=candidate.window_end,
                 currency=body.currency,
-                snapshot_id=pinned,
+                snapshot_id=frozen_snapshot,
             )
             private = None
             if candidate.private_rates is not None:

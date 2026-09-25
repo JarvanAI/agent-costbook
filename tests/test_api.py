@@ -262,3 +262,67 @@ def test_one_estimate_request_stays_on_the_revision_pinned_before_selection(tmp_
         Decimal("0.0177"),
         Decimal("0.0177"),
     ]
+
+
+def test_empty_catalog_stays_empty_when_a_draft_is_published_between_lookups(tmp_path):
+    client = _client(tmp_path)
+    created = client.post(
+        "/v1/contributions",
+        headers={"Authorization": "Bearer test-token"},
+        json=synthetic_contribution(),
+    )
+    assert created.status_code == 201
+    assert client.get("/v1/catalog").json()["records"] == []
+    store = client.app.state.store
+    original = store.select_record
+    calls = {"count": 0}
+
+    def publish_between_candidates(**kwargs):
+        calls["count"] += 1
+        if calls["count"] == 1:
+            store.publish(created.json()["contribution_id"])
+        return original(**kwargs)
+
+    store.select_record = publish_between_candidates
+    try:
+        response = client.post(
+            "/v1/estimates",
+            json={
+                "method": "M4",
+                "currency": "USD",
+                "usage": {
+                    "uncached_input": "1000",
+                    "cache_read": "2000",
+                    "cache_write": "500",
+                    "billed_output": "400",
+                },
+                "extra_cost": "0.01",
+                "candidates": [
+                    {
+                        "candidate_id": "first",
+                        "provider": "example",
+                        "channel": "api",
+                        "model": "synthetic-m4",
+                        "plan": "payg",
+                        "feature_scope": "text",
+                    },
+                    {
+                        "candidate_id": "second",
+                        "provider": "example",
+                        "channel": "api",
+                        "model": "synthetic-m4",
+                        "plan": "payg",
+                        "feature_scope": "text",
+                    },
+                ],
+            },
+        )
+    finally:
+        store.select_record = original
+    assert response.status_code == 200, response.text
+    results = response.json()["results"]
+    assert [item["status"] for item in results] == ["missing_data", "missing_data"]
+    assert [item["snapshot_id"] for item in results] == [None, None]
+    assert [item["metrics"] for item in results] == [None, None]
+    assert calls["count"] == 2
+    assert store.catalog(None)[0]["model"] == "synthetic-m4"
