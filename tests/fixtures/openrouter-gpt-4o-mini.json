@@ -1,0 +1,12 @@
+{
+  "url": "https://openrouter.ai/api/v1/models",
+  "retrieved_at": "2026-09-25T05:54:07.050793+00:00",
+  "response_sha256": "68650e8ee5ddbdea6eeae28779820585ec6a13cb6f5ed31e37323b4657a8eade",
+  "model_id": "openai/gpt-4o-mini",
+  "pricing_usd_per_token": {
+    "prompt": "0.00000015",
+    "completion": "0.0000006",
+    "input_cache_read": "0.000000075"
+  },
+  "scope": "public channel model listing, not an original-vendor direct quote"
+}

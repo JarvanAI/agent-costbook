@@ -1,0 +1,185 @@
+import os
+import socket
+import subprocess
+import sys
+import time
+from decimal import Decimal
+from pathlib import Path
+
+import httpx
+
+from support import OPENROUTER_SHA256, openrouter_contribution, synthetic_contribution
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def _free_port() -> int:
+    with socket.socket() as sock:
+        sock.bind(("127.0.0.1", 0))
+        return sock.getsockname()[1]
+
+
+def _client(base: str) -> httpx.Client:
+    return httpx.Client(base_url=base, timeout=5, trust_env=False)
+
+
+def _wait_health(client: httpx.Client, proc: subprocess.Popen) -> None:
+    deadline = time.monotonic() + 20
+    last_error = None
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            raise AssertionError(f"service exited {proc.returncode}")
+        try:
+            response = client.get("/health")
+            if response.status_code == 200 and response.json()["status"] == "ok":
+                return
+        except httpx.HTTPError as exc:
+            last_error = exc
+        time.sleep(0.1)
+    raise AssertionError(f"health check failed: {last_error}")
+
+
+def _start(db: Path, port: int) -> subprocess.Popen:
+    env = os.environ.copy()
+    env.update(
+        {
+            "ACB_DB": str(db),
+            "ACB_ADMIN_TOKEN": "e2e-token",
+        }
+    )
+    return subprocess.Popen(
+        [
+            sys.executable,
+            "-m",
+            "uvicorn",
+            "agent_costbook.api:create_app",
+            "--factory",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            str(port),
+        ],
+        cwd=ROOT,
+        env=env,
+        start_new_session=True,
+    )
+
+
+def _stop(proc: subprocess.Popen) -> None:
+    if proc.poll() is not None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
+def test_real_http_contribution_survives_restart_and_exports_markdown(tmp_path):
+    db = tmp_path / "service.sqlite3"
+    port = _free_port()
+    base = f"http://127.0.0.1:{port}"
+    headers = {"Authorization": "Bearer e2e-token"}
+    proc = _start(db, port)
+    try:
+        with _client(base) as client:
+            _wait_health(client, proc)
+            created = client.post(
+                "/v1/contributions",
+                headers={**headers, "Idempotency-Key": "openrouter-gpt-4o-mini"},
+                json=openrouter_contribution(),
+            )
+            assert created.status_code == 201, created.text
+            body = created.json()
+            assert body["evidence"][0]["content_sha256"] == OPENROUTER_SHA256
+            published = client.post(
+                f"/v1/contributions/{body['contribution_id']}/publish",
+                headers=headers,
+            )
+            assert published.status_code == 200, published.text
+            snapshot_id = published.json()["snapshot_id"]
+            _stop(proc)
+            proc = _start(db, port)
+            _wait_health(client, proc)
+            catalog = client.get("/v1/catalog")
+            assert catalog.status_code == 200
+            record = catalog.json()["records"][0]
+            assert record["model"] == "openai/gpt-4o-mini"
+            assert record["channel"] == "openrouter"
+            assert "cache_write_per_million" not in record["rates"]
+            assert record["snapshot_id"] == snapshot_id
+            estimate = client.post(
+                "/v1/estimates",
+                json={
+                    "method": "M4",
+                    "snapshot_id": snapshot_id,
+                    "currency": "USD",
+                    "usage": {"uncached_input": "1000", "billed_output": "400"},
+                    "extra_cost": "0",
+                    "candidates": [
+                        {
+                            "candidate_id": "openrouter-gpt-4o-mini",
+                            "provider": "openai",
+                            "channel": "openrouter",
+                            "model": "openai/gpt-4o-mini",
+                            "effort": "",
+                            "plan": "payg",
+                            "feature_scope": "text",
+                        }
+                    ],
+                },
+            )
+            assert estimate.status_code == 200, estimate.text
+            result = estimate.json()["results"][0]
+            assert result["status"] == "ok"
+            assert Decimal(result["metrics"]["cost"]) == Decimal("0.00039")
+            assert result["sources"] == [body["evidence"][0]["id"]]
+            exported = client.get(
+                f"/v1/research/{body['research_id']}",
+                params={"format": "markdown"},
+            )
+            assert exported.status_code == 200
+            assert "0.00039 USD" in exported.text
+            assert "68650e8ee5ddbdea6eeae28779820585ec6a13cb6f5ed31e37323b4657a8eade" in exported.text
+
+            historical = synthetic_contribution()
+            first = client.post("/v1/contributions", headers=headers, json=historical)
+            first_snapshot = client.post(
+                f"/v1/contributions/{first.json()['contribution_id']}/publish",
+                headers=headers,
+            ).json()["snapshot_id"]
+            historical["records"][0]["rates"]["uncached_input_per_million"] = "1"
+            second = client.post("/v1/contributions", headers=headers, json=historical)
+            client.post(
+                f"/v1/contributions/{second.json()['contribution_id']}/publish",
+                headers=headers,
+            )
+            old = client.post(
+                "/v1/estimates",
+                json={
+                    "method": "M4",
+                    "snapshot_id": first_snapshot,
+                    "currency": "USD",
+                    "usage": {
+                        "uncached_input": "1000",
+                        "cache_read": "2000",
+                        "cache_write": "500",
+                        "billed_output": "400",
+                    },
+                    "extra_cost": "0.01",
+                    "candidates": [
+                        {
+                            "candidate_id": "historical",
+                            "provider": "example",
+                            "channel": "api",
+                            "model": "synthetic-m4",
+                            "plan": "payg",
+                            "feature_scope": "text",
+                        }
+                    ],
+                },
+            )
+            assert Decimal(old.json()["results"][0]["metrics"]["cost"]) == Decimal("0.0177")
+    finally:
+        _stop(proc)
