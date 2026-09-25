@@ -10,10 +10,25 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-FORMULA_SET = "ac-formulas-v1"
+FORMULA_SET = "ac-formulas-v2"
+LEGACY_FORMULA_SET = "ac-formulas-v1"
+SUPPORTED_FORMULA_SETS = frozenset({FORMULA_SET, LEGACY_FORMULA_SET})
 EXPORT_GENERATION = 2
 MAX_SAFE_INT = 9007199254740991
 _PUBLIC_SNAPSHOT = re.compile(r"^snap-([1-9][0-9]*)$")
+_OBSERVATION_SCOPE = (
+    "provider",
+    "channel",
+    "model",
+    "effort",
+    "plan",
+    "feature_scope",
+    "currency",
+    "period_start",
+    "period_end",
+    "task_category",
+    "acceptance",
+)
 _SUBSCRIPTION_KEYS = (
     "monthly_price",
     "price_period",
@@ -197,6 +212,29 @@ class Store:
                 singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
                 publisher_id TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS observations (
+                id TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                idempotency_key TEXT,
+                payload_sha256 TEXT NOT NULL,
+                scope_key TEXT NOT NULL UNIQUE,
+                provider TEXT NOT NULL,
+                channel TEXT NOT NULL,
+                model TEXT NOT NULL,
+                effort TEXT NOT NULL,
+                plan TEXT NOT NULL,
+                feature_scope TEXT NOT NULL,
+                currency TEXT NOT NULL,
+                period_start TEXT NOT NULL,
+                period_end TEXT NOT NULL,
+                task_category TEXT NOT NULL,
+                acceptance TEXT NOT NULL,
+                response_json TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
+            CREATE UNIQUE INDEX IF NOT EXISTS observations_idempotency
+                ON observations(idempotency_key)
+                WHERE idempotency_key IS NOT NULL;
             """
         )
         self._add_column("snapshots", "formula_version", "TEXT")
@@ -210,7 +248,7 @@ class Store:
             SET formula_version = ?
             WHERE formula_version IS NULL
             """,
-            (FORMULA_SET,),
+            (LEGACY_FORMULA_SET,),
         )
         existing = self._conn.execute(
             "SELECT publisher_id FROM publisher_identity WHERE singleton = 1"
@@ -662,6 +700,128 @@ class Store:
             "SELECT * FROM snapshots WHERE id = ?",
             (snapshot_id,),
         ).fetchone()
+
+    @_locked
+    def record_observation(
+        self,
+        payload: dict,
+        measurement: dict,
+        idempotency_key: str | None,
+    ) -> tuple[dict, bool]:
+        digest = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()
+        scope = {key: payload.get(key) or "" for key in _OBSERVATION_SCOPE}
+        scope_key = _canonical(scope)
+        with self._lock:
+            if idempotency_key:
+                existing = self._conn.execute(
+                    "SELECT payload_sha256, response_json FROM observations WHERE idempotency_key = ?",
+                    (idempotency_key,),
+                ).fetchone()
+                if existing is not None:
+                    if existing["payload_sha256"] != digest:
+                        raise StoreError("idempotency_conflict")
+                    return json.loads(existing["response_json"]), False
+            current = self._conn.execute(
+                "SELECT payload_sha256, response_json FROM observations WHERE scope_key = ?",
+                (scope_key,),
+            ).fetchone()
+            if current is not None:
+                if current["payload_sha256"] != digest:
+                    raise StoreError("scope_conflict")
+                return json.loads(current["response_json"]), False
+            observation_id = f"ob_{uuid.uuid4().hex}"
+            response = {
+                "observation_id": observation_id,
+                "status": "recorded",
+                "measurement": measurement,
+            }
+            self._conn.execute(
+                """
+                INSERT INTO observations (
+                    id, status, idempotency_key, payload_sha256, scope_key,
+                    provider, channel, model, effort, plan, feature_scope, currency,
+                    period_start, period_end, task_category, acceptance,
+                    response_json, created_at
+                ) VALUES (?, 'recorded', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    observation_id,
+                    idempotency_key,
+                    digest,
+                    scope_key,
+                    scope["provider"],
+                    scope["channel"],
+                    scope["model"],
+                    scope["effort"],
+                    scope["plan"],
+                    scope["feature_scope"],
+                    scope["currency"],
+                    scope["period_start"],
+                    scope["period_end"],
+                    scope["task_category"],
+                    scope["acceptance"],
+                    json.dumps(response, ensure_ascii=False),
+                    _now(),
+                ),
+            )
+            return response, True
+
+    @_locked
+    def find_measurement(
+        self,
+        *,
+        provider: str,
+        channel: str,
+        model: str,
+        effort: str,
+        plan: str,
+        feature_scope: str,
+        currency: str | None,
+        period_start: str | None,
+        period_end: str | None,
+        task_category: str | None,
+        acceptance: str | None,
+    ) -> dict | None:
+        missing = []
+        if not task_category:
+            missing.append("task_category")
+        if not acceptance:
+            missing.append("acceptance")
+        if not period_start or not period_end:
+            missing.append("period")
+        if not currency:
+            missing.append("currency")
+        if missing:
+            return {"missing_fields": missing}
+        identity = (
+            provider,
+            channel,
+            model,
+            effort or "",
+            plan,
+            feature_scope,
+            period_start,
+            period_end,
+            task_category,
+            acceptance,
+        )
+        rows = self._conn.execute(
+            """
+            SELECT currency, response_json FROM observations
+            WHERE provider = ? AND channel = ? AND model = ? AND effort = ?
+              AND plan = ? AND feature_scope = ? AND period_start = ? AND period_end = ?
+              AND task_category = ? AND acceptance = ?
+            """,
+            identity,
+        ).fetchall()
+        matched = [row for row in rows if row["currency"] == currency]
+        if len(matched) > 1:
+            return {"status": "conflict"}
+        if len(matched) == 1:
+            return json.loads(matched[0]["response_json"])["measurement"]
+        if rows:
+            return {"status": "invalid_input", "assumption": "currency_conversion_refused"}
+        return None
 
     @_locked
     def snapshot_exists(self, snapshot_id: str) -> bool:

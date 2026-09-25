@@ -23,10 +23,13 @@ _FORMULAS = {
     "M0": "m0-v1",
     "M1": "m1-v1",
     "M2": "m2-v1",
+    "M3": "m3-v1",
     "M4": "m4-v1",
+    "M5": "m5-v1",
     "M6": "m6-v1",
+    "M7": "m7-v1",
 }
-_SUBSCRIPTION_METHODS = {"M1", "M2", "M6"}
+_SUBSCRIPTION_METHODS = {"M1", "M2", "M3", "M6"}
 
 
 def parse_decimal(value: object) -> Decimal | None:
@@ -125,6 +128,26 @@ def _read_amount(raw: object, *, low: Decimal, high: Decimal | None, greater_tha
     return number, "ok"
 
 
+def _quality_proxy(subscription: dict, result: dict) -> tuple[Decimal | None, dict]:
+    raw = subscription.get("weight")
+    if raw is None:
+        result["assumptions"].append("capability_proxy_disabled")
+        weight = Decimal("1")
+        kind = "disabled"
+    else:
+        weight, state = _read_amount(raw, low=Decimal("0"), high=None, greater_than=True)
+        if state != "ok" or weight is None:
+            return None, {}
+        kind = "linear_index"
+        result["assumptions"].append("capability_proxy_not_success_rate")
+    result["assumptions"].append("do_not_reweight_for_routing")
+    return weight, {
+        "kind": kind,
+        "weight": money_text(weight),
+        "explains": "not_a_measured_success_rate",
+    }
+
+
 def _cash_increment(result: dict, marginal_cash: str | None) -> str | None | object:
     if marginal_cash is None:
         result["missing_fields"].append("cash_increment")
@@ -183,6 +206,7 @@ def _evaluate_subscription(
     required = {
         "M1": ("monthly_price", "quota_multiplier"),
         "M2": ("monthly_price",),
+        "M3": ("monthly_price",),
         "M6": (
             "monthly_price",
             "quota_multiplier",
@@ -222,7 +246,7 @@ def _evaluate_subscription(
         values["weight"] = Decimal("1")
         result["assumptions"].append("default_weight_one")
     measured = values.get("measured_tasks")
-    if method == "M2" and measured is None:
+    if method in {"M2", "M3"} and measured is None:
         for key in ("quota_multiplier", "baseline_tasks", "utilization"):
             if key not in values and key not in missing:
                 missing.append(key)
@@ -248,10 +272,10 @@ def _evaluate_subscription(
             cash=cash if isinstance(cash, str) else None,
             api_equivalent=api_equivalent,
         )
-    if method == "M2" and measured is not None:
+    if method in {"M2", "M3"} and measured is not None:
         task_count = measured
         result["assumptions"].append("measured_n_not_rescaled_by_utilization")
-    elif method == "M2":
+    elif method in {"M2", "M3"}:
         task_count = values["quota_multiplier"] * values["baseline_tasks"] * values["utilization"]
     else:
         if values["utilization"] == 0:
@@ -291,11 +315,16 @@ def _evaluate_subscription(
                 * values["weight"]
             )
         )
+    elif method == "M3":
+        weight, proxy = _quality_proxy(subscription, result)
+        if weight is None:
+            return _invalid(result)
+        cost = price / (task_count * weight)
     else:
         cost = price / task_count
     if price == 0:
         result["assumptions"].append("explicit_zero_price")
-    return _finish_subscription(
+    finished = _finish_subscription(
         result,
         currency=record["currency"],
         method=method,
@@ -307,6 +336,9 @@ def _evaluate_subscription(
         cash=cash if isinstance(cash, str) else None,
         api_equivalent=api_equivalent,
     )
+    if method == "M3":
+        finished["quality_proxy"] = proxy
+    return finished
 
 
 def _same_borrow_scope(record: dict, reference: dict) -> bool:
@@ -380,7 +412,7 @@ def _comparison_match(method: str, left: dict, right: dict, allow_cross_provider
         return False
     if method == "M6" and left.get("has_own_budget") and right.get("has_own_budget"):
         return True
-    if method == "M2" and left.get("has_own_tasks") and right.get("has_own_tasks"):
+    if method in {"M2", "M3"} and left.get("has_own_tasks") and right.get("has_own_tasks"):
         return True
     return bool(allow_cross_provider)
 
@@ -472,6 +504,7 @@ def evaluate_candidate(
     subscription_override: dict | None = None,
     scenario_notes: list[str] | None = None,
     private_subscription: dict | None = None,
+    measurement: dict | None = None,
 ) -> dict:
     result = _result(candidate_id, method, record)
     if method not in _FORMULAS:
@@ -480,6 +513,8 @@ def evaluate_candidate(
         result["sources"] = []
         result["freshness"] = None
         return result
+    if method == "M7":
+        return _evaluate_measured(result, measurement, currency, record)
     if conflict or (record is not None and record.get("record_status") == "conflict"):
         result["status"] = "conflict"
         result["metrics"] = None
@@ -612,8 +647,89 @@ def evaluate_candidate(
         total += amount * parse_decimal(rates[rate_key]) / MILLION
     if not total.is_finite():
         return _invalid(result, "invalid_usage")
+    if method == "M5":
+        weight, proxy = _quality_proxy(dict(record.get("subscription") or {}), result)
+        if weight is None:
+            return _invalid(result)
+        result["metrics"] = {
+            "cost": money_text(total),
+            "K": money_text(total / weight),
+            "currency": record["currency"],
+        }
+        result["units"] = {"cost": record["currency"], "K": record["currency"]}
+        result["quality_proxy"] = proxy
+        return result
     result["metrics"] = {"cost": money_text(total), "currency": record["currency"]}
     result["units"] = {"cost": record["currency"]}
+    return result
+
+
+def _evaluate_measured(
+    result: dict,
+    measurement: dict | None,
+    currency: str | None,
+    record: dict | None,
+) -> dict:
+    result["formula_version"] = _FORMULAS["M7"]
+    if measurement is None:
+        return _mark_missing(result, ["measurement"])
+    if measurement.get("status") == "conflict":
+        result["status"] = "conflict"
+        result["metrics"] = None
+        result["units"] = None
+        return result
+    if measurement.get("missing_fields"):
+        return _mark_missing(result, list(measurement["missing_fields"]))
+    if measurement.get("status") == "invalid_input":
+        return _invalid(result, measurement.get("assumption") or "currency_conversion_refused")
+    observed = measurement.get("currency")
+    record_currency = None if record is None else record.get("currency")
+    if (currency and currency != observed) or (record_currency and record_currency != observed):
+        return _invalid(result, "currency_conversion_refused")
+    cash = parse_decimal(measurement.get("attributed_cash"))
+    successes = parse_decimal(measurement.get("successful_tasks"))
+    if cash is None or cash < 0 or successes is None or successes < 0:
+        return _invalid(result)
+    metrics = {
+        "K": None,
+        "attributed_cash": money_text(cash),
+        "successful_tasks": measurement["successful_tasks"],
+        "sample_size": measurement.get("sample_size"),
+        "attempt_count": measurement.get("attempt_count"),
+        "api_equivalent": measurement.get("api_equivalent"),
+    }
+    result["metrics"] = metrics
+    result["units"] = {
+        "K": f"{observed}_per_successful_task",
+        "attributed_cash": observed,
+        "successful_tasks": "tasks",
+        "sample_size": "tasks",
+        "attempt_count": "attempts",
+    }
+    if measurement.get("api_equivalent") is not None:
+        result["units"]["api_equivalent"] = f"{observed}_api_equivalent"
+    result["measurement"] = {
+        "period_start": measurement.get("period_start"),
+        "period_end": measurement.get("period_end"),
+        "task_category": measurement.get("task_category"),
+        "acceptance": measurement.get("acceptance"),
+        "sample_size": measurement.get("sample_size"),
+        "currency": observed,
+    }
+    for note in (
+        "api_equivalent_excluded_from_cash",
+        "retries_counted_in_cash_not_in_success",
+        "subscription_cash_once_per_period",
+    ):
+        result["assumptions"].append(note)
+    if successes == 0 and cash > 0:
+        result["status"] = "unbounded"
+        return result
+    if successes == 0:
+        result["status"] = "insufficient_data"
+        return result
+    metrics["K"] = money_text(cash / successes)
+    result["status"] = "ok"
     return result
 
 
@@ -648,8 +764,11 @@ def run_estimate(
     candidates: list[dict],
     selections: list,
     compare: bool = True,
+    measurements: list | None = None,
 ) -> list[dict]:
     paired = list(zip(candidates, selections))
+    if measurements is None:
+        measurements = [None] * len(paired)
     reference_record = None
     if reference_candidate_id:
         for candidate, selection in paired:
@@ -657,7 +776,7 @@ def run_estimate(
                 reference_record = selection.record
     results = []
     contexts = []
-    for candidate, selection in paired:
+    for index, (candidate, selection) in enumerate(paired):
         subscription, notes = apply_scenario(
             selection.record,
             reference_record,
@@ -676,6 +795,7 @@ def run_estimate(
             subscription_override=subscription,
             scenario_notes=notes,
             private_subscription=candidate.get("private_subscription") or None,
+            measurement=measurements[index],
         )
         result["record_snapshot_id"] = (
             selection.record.get("snapshot_id") if selection.record else None

@@ -7,7 +7,8 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 
 from agent_costbook.estimates import run_estimate
 from agent_costbook.export import catalog_document
-from agent_costbook.models import CandidateIn, ContributionIn, EstimateIn
+from agent_costbook.models import CandidateIn, ContributionIn, EstimateIn, ObservationIn
+from agent_costbook.observations import aggregate_observation
 from agent_costbook.settings import Settings, load_settings
 from agent_costbook.store import Store, StoreError
 
@@ -54,7 +55,7 @@ def _require_admin(settings: Settings, authorization: str | None) -> None:
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or load_settings()
     store = Store(resolved.db_path)
-    app = FastAPI(title="agent-costbook", version="0.3.0")
+    app = FastAPI(title="agent-costbook", version="0.4.0")
     app.state.store = store
     app.state.settings = resolved
 
@@ -129,6 +130,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             raise
 
+    @app.post("/v1/observations", status_code=201)
+    def observe(
+        body: ObservationIn,
+        authorization: str | None = Header(default=None),
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
+    ):
+        _require_admin(resolved, authorization)
+        payload = body.model_dump(mode="json", exclude_none=True)
+        try:
+            recorded, created = store.record_observation(
+                payload,
+                aggregate_observation(payload),
+                idempotency_key,
+            )
+        except StoreError as exc:
+            if exc.code in {"idempotency_conflict", "scope_conflict"}:
+                return JSONResponse(
+                    status_code=409,
+                    content={"status": "conflict", "detail": exc.code},
+                )
+            raise
+        return JSONResponse(status_code=201 if created else 200, content=recorded)
+
     @app.post("/v1/estimates")
     def estimates(body: EstimateIn) -> dict:
         revision = store.revision_of(body.snapshot_id)
@@ -156,6 +180,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     selection.record.get("evidence_ids") or []
                 )
         scenario = body.scenario.model_dump() if body.scenario is not None else None
+        measurements = None
+        if body.method == "M7":
+            measurements = [
+                store.find_measurement(
+                    provider=candidate.provider,
+                    channel=candidate.channel,
+                    model=candidate.model,
+                    effort=candidate.effort,
+                    plan=candidate.plan,
+                    feature_scope=candidate.feature_scope,
+                    currency=body.currency,
+                    period_start=candidate.window_start,
+                    period_end=candidate.window_end,
+                    task_category=body.task_category,
+                    acceptance=body.acceptance,
+                )
+                for candidate in body.candidates
+            ]
         results = run_estimate(
             method=body.method,
             usage=body.usage,
@@ -165,6 +207,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             reference_candidate_id=body.reference_candidate_id,
             candidates=[_candidate_dict(candidate) for candidate in body.candidates],
             selections=selections,
+            measurements=measurements,
         )
         published = catalog_document(store, revision)
         published.pop("records")

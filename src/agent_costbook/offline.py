@@ -12,9 +12,7 @@ from pydantic import ValidationError
 from agent_costbook.estimates import freshness_view, run_estimate
 from agent_costbook.export import _canonical
 from agent_costbook.models import EstimateIn
-from agent_costbook.store import MAX_SAFE_INT
-
-SUPPORTED_FORMULA = "ac-formulas-v1"
+from agent_costbook.store import MAX_SAFE_INT, SUPPORTED_FORMULA_SETS
 _LABELS = (
     ("P", "monthly_price"),
     ("m", "quota_multiplier"),
@@ -227,7 +225,7 @@ def estimate_snapshot(
     max_age_seconds: int | None = None,
 ) -> dict:
     formula = document.get("formula_version")
-    if formula != SUPPORTED_FORMULA:
+    if formula not in SUPPORTED_FORMULA_SETS:
         raise SnapshotError("unsupported_formula")
     if body.snapshot_id is not None and body.snapshot_id != document.get("snapshot_id"):
         raise SnapshotError("snapshot_id")

@@ -15,7 +15,7 @@ To recalculate a published file without the HTTP service:
 ac estimate --snapshot snapshot.json --request estimate.json --publisher "$PUBLISHER_ID"
 ```
 
-The request body matches `POST /v1/estimates`. If you set `snapshot_id`, it must be the file's `snap-N`. Old published files do not contain `task_profile` or `baseline_group`. Metrics are still calculated from the fields that are present. A reference comparison on those files returns `comparison: unavailable` and does not invent the missing context. New publications include both scope fields. A file whose `formula_version` is not `ac-formulas-v1` returns `unsupported_formula`. Record freshness follows source `retrieved_at`, not the snapshot's publish time.
+The request body matches `POST /v1/estimates`. If you set `snapshot_id`, it must be the file's `snap-N`. Old published files do not contain `task_profile` or `baseline_group`. Metrics are still calculated from the fields that are present. A reference comparison on those files returns `comparison: unavailable` and does not invent the missing context. New publications include both scope fields. A file whose `formula_version` is `ac-formulas-v1` or `ac-formulas-v2` can be recalculated. `ac-formulas-v1` keeps its original M0–M6 meaning. Any other formula set returns `unsupported_formula`. Record freshness follows source `retrieved_at`, not the snapshot's publish time.
 
 ## Before writing
 
@@ -66,4 +66,16 @@ curl -sS -X POST "http://127.0.0.1:8080/v1/estimates" \
   -d '{"method":"M4","currency":"USD","usage":{"uncached_input":"1000","billed_output":"400"},"extra_cost":"0","candidates":[{"candidate_id":"example","provider":"openai","channel":"openrouter","model":"openai/gpt-4o-mini","plan":"payg","feature_scope":"text"}]}'
 ```
 
-`private_rates` on a candidate overrides that request only. Read the catalog afterward and confirm the stored rate did not change. M0 returns the stored rates. M1 is `monthly_price / quota_multiplier` inside one provider, feature scope, and `baseline_group`. The same group name does not compare another provider. `GET /v1/catalog` returns the canonical published records, the same body covered by `content_sha256`. M2 amortizes price over `quota_multiplier * baseline_tasks * utilization`, unless `measured_tasks` is present, in which case that count is not multiplied by utilization again. M6 amortizes price over the API-equivalent task count `quota_multiplier * baseline_api_budget * utilization / cost_per_task`, with `weight` applied only to the cost. Set `reference_candidate_id` to compare against an explicit candidate. M3, M5, and M7 return `unsupported_method`. Pass `snapshot_id` to recalculate against an older published snapshot. `marginal_cash` is optional and is not inferred as 0.
+`private_rates` on a candidate overrides that request only. Read the catalog afterward and confirm the stored rate did not change. M0 returns the stored rates. M1 is `monthly_price / quota_multiplier` inside one provider, feature scope, and `baseline_group`. The same group name does not compare another provider. `GET /v1/catalog` returns the canonical published records, the same body covered by `content_sha256`. M2 amortizes price over `quota_multiplier * baseline_tasks * utilization`, unless `measured_tasks` is present, in which case that count is not multiplied by utilization again. M6 amortizes price over the API-equivalent task count `quota_multiplier * baseline_api_budget * utilization / cost_per_task`, with `weight` applied only to the cost. M3 is the M2 cost divided by `subscription.weight` (`K = P / (N × w)`). M5 is the M4 cost divided by that same weight (`K = C / w`). When the weight is omitted, both use 1 and report `capability_proxy_disabled`. The weight is a capability proxy, not a measured success rate; do not multiply it again in routing. Pass `snapshot_id` to recalculate against an older published snapshot. `marginal_cash` is optional and is not inferred as 0.
+
+Measured task results are a separate write, not a catalog contribution:
+
+```sh
+curl -sS -X POST "http://127.0.0.1:8080/v1/observations" \
+  -H "Authorization: Bearer $ACB_ADMIN_TOKEN" \
+  -H "Idempotency-Key: period-and-task-category" \
+  -H "Content-Type: application/json" \
+  -d @observation.json
+```
+
+`observation.json` names the same provider, channel, model, effort, plan, feature scope, and currency as an estimate candidate. `period_start` and `period_end` are ISO timestamps, `subscription_cash` is the period fee counted once, and each task has a `task_id` plus attempts of `cash`, optional `api_equivalent`, and `succeeded`. The same task id counts as one success even if a later attempt also succeeds. Cash from failed and retried attempts is kept. API-equivalent amounts are not cash. The same key with a different body returns 409, and a second different body for the same scope also returns 409. The service does not read agent credentials and does not copy task text into the catalog or export. Ask for M7 with `task_category`, `acceptance`, and the candidate's `window_start` / `window_end`. No imported sample returns `missing_data`. `S = 0` with cash above 0 returns `unbounded`; `S = 0` with cash 0 returns `insufficient_data`.

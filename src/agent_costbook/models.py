@@ -164,6 +164,63 @@ class ScenarioIn(BaseModel):
     equal_baseline_tasks: bool = False
 
 
+class AttemptIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    cash: str
+    api_equivalent: str | None = None
+    succeeded: bool
+
+    @model_validator(mode="after")
+    def amounts_are_non_negative(self) -> AttemptIn:
+        for key in ("cash", "api_equivalent"):
+            raw = getattr(self, key)
+            if raw is None:
+                continue
+            number = parse_decimal(raw)
+            if number is None or number < 0:
+                raise ValueError(f"{key} must be a finite non-negative decimal string")
+        return self
+
+
+class ObservedTaskIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    task_id: str = Field(min_length=1, max_length=160)
+    attempts: list[AttemptIn] = Field(min_length=1)
+
+
+class ObservationIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    provider: str = Field(min_length=1, max_length=120)
+    channel: str = Field(min_length=1, max_length=120)
+    model: str = Field(min_length=1, max_length=200)
+    effort: str = Field(default="", max_length=80)
+    plan: str = Field(min_length=1, max_length=80)
+    feature_scope: str = Field(min_length=1, max_length=80)
+    currency: str = Field(min_length=1, max_length=12)
+    period_start: str = Field(min_length=1, max_length=64)
+    period_end: str = Field(min_length=1, max_length=64)
+    task_category: str = Field(min_length=1, max_length=120)
+    acceptance: str = Field(min_length=1, max_length=120)
+    subscription_cash: str
+    tasks: list[ObservedTaskIn] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def cash_and_period_are_explicit(self) -> ObservationIn:
+        number = parse_decimal(self.subscription_cash)
+        if number is None or number < 0:
+            raise ValueError("subscription_cash must be a finite non-negative decimal string")
+        from datetime import datetime
+
+        try:
+            start = datetime.fromisoformat(self.period_start)
+            end = datetime.fromisoformat(self.period_end)
+        except ValueError as exc:
+            raise ValueError("period_start and period_end must be ISO timestamps") from exc
+        if start >= end:
+            raise ValueError("period_end must be after period_start")
+        return self
+
+
 class EstimateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     method: str = Field(min_length=1, max_length=16)
@@ -172,6 +229,8 @@ class EstimateIn(BaseModel):
     usage: dict[str, str] | None = None
     extra_cost: str | None = None
     reference_candidate_id: str | None = Field(default=None, max_length=160)
+    task_category: str | None = Field(default=None, max_length=120)
+    acceptance: str | None = Field(default=None, max_length=120)
     scenario: ScenarioIn | None = None
     candidates: list[CandidateIn] = Field(min_length=1)
 

@@ -452,3 +452,216 @@ def test_real_http_m6_ratio_then_stopped_export(tmp_path):
     assert document["snapshot_id"] == "snap-3"
     assert {row["plan"] for row in document["records"]} == {"plan-1", "plan-2", "plan-9"}
     assert "e2e-token" not in exported.stdout.decode()
+
+
+def test_real_http_m3_m5_and_m7_share_the_core_and_hide_task_text(tmp_path):
+    db = tmp_path / "service.sqlite3"
+    port = _free_port()
+    base = f"http://127.0.0.1:{port}"
+    headers = {"Authorization": "Bearer e2e-token"}
+    payload = synthetic_contribution()
+    record = payload["records"][0]
+    record["window_start"] = "2026-09-01T00:00:00+00:00"
+    record["window_end"] = "2026-10-01T00:00:00+00:00"
+    record["subscription"] = {
+        "monthly_price": "20",
+        "price_period": "month",
+        "quota_multiplier": "2",
+        "baseline_tasks": "100",
+        "utilization": "0.5",
+        "weight": "1",
+        "task_profile": "coding",
+        "baseline_group": "code",
+    }
+    tasks = []
+    for index in range(10):
+        task_id = "private-task-9f3a" if index == 0 else f"task-{index}"
+        attempts = [{"cash": "0", "api_equivalent": "10", "succeeded": True}]
+        if index == 0:
+            attempts.append({"cash": "0", "api_equivalent": "0", "succeeded": True})
+        tasks.append({"task_id": task_id, "attempts": attempts})
+    observation = {
+        "provider": "example",
+        "channel": "api",
+        "model": "synthetic-m4",
+        "effort": "",
+        "plan": "payg",
+        "feature_scope": "text",
+        "currency": "USD",
+        "period_start": "2026-09-01T00:00:00+00:00",
+        "period_end": "2026-10-01T00:00:00+00:00",
+        "task_category": "coding",
+        "acceptance": "tests_passed",
+        "subscription_cash": "25",
+        "tasks": tasks,
+    }
+    candidate = {
+        "candidate_id": "synthetic",
+        "provider": "example",
+        "channel": "api",
+        "model": "synthetic-m4",
+        "plan": "payg",
+        "feature_scope": "text",
+        "window_start": "2026-09-01T00:00:00+00:00",
+        "window_end": "2026-10-01T00:00:00+00:00",
+    }
+    proc = _start(db, port)
+    try:
+        with _client(base) as client:
+            _wait_health(client, proc)
+            refused = client.post("/v1/observations", json=observation)
+            assert refused.status_code == 401
+            invalid = client.post(
+                "/v1/observations",
+                headers=headers,
+                json={**observation, "subscription_cash": None},
+            )
+            assert invalid.status_code == 422
+            created = client.post(
+                "/v1/contributions",
+                headers={**headers, "Idempotency-Key": "v04-card"},
+                json=payload,
+            )
+            assert created.status_code == 201, created.text
+            published = client.post(
+                f"/v1/contributions/{created.json()['contribution_id']}/publish",
+                headers=headers,
+            )
+            assert published.status_code == 200, published.text
+            observed = client.post(
+                "/v1/observations",
+                headers={**headers, "Idempotency-Key": "v04-measure"},
+                json=observation,
+            )
+            assert observed.status_code == 201, observed.text
+            replay = client.post(
+                "/v1/observations",
+                headers={**headers, "Idempotency-Key": "v04-measure"},
+                json=observation,
+            )
+            assert replay.status_code == 200
+            assert replay.json()["observation_id"] == observed.json()["observation_id"]
+            changed = dict(observation)
+            changed["subscription_cash"] = "26"
+            conflict = client.post(
+                "/v1/observations",
+                headers={**headers, "Idempotency-Key": "v04-measure"},
+                json=changed,
+            )
+            assert conflict.status_code == 409
+
+            def estimate(method, **extra):
+                response = client.post(
+                    "/v1/estimates",
+                    json={
+                        "method": method,
+                        "currency": "USD",
+                        "usage": {
+                            "uncached_input": "1000",
+                            "cache_read": "2000",
+                            "cache_write": "500",
+                            "billed_output": "400",
+                        },
+                        "extra_cost": "0.01",
+                        "candidates": [candidate],
+                        **extra,
+                    },
+                )
+                assert response.status_code == 200, response.text
+                return response.json()["results"][0]
+
+            m2 = estimate("M2")
+            m3 = estimate("M3")
+            m4 = estimate("M4")
+            m5 = estimate("M5")
+            assert Decimal(m3["metrics"]["K"]) == Decimal(m2["metrics"]["K"]) == Decimal("0.2")
+            assert m3["quality_proxy"]["explains"] == "not_a_measured_success_rate"
+            assert "do_not_reweight_for_routing" in m3["assumptions"]
+            assert Decimal(m5["metrics"]["K"]) == Decimal(m4["metrics"]["cost"]) == Decimal("0.0177")
+            assert m5["quality_proxy"]["explains"] == "not_a_measured_success_rate"
+            measured = estimate(
+                "M7",
+                task_category="coding",
+                acceptance="tests_passed",
+            )
+            assert measured["status"] == "ok"
+            assert Decimal(measured["metrics"]["K"]) == Decimal("2.5")
+            assert Decimal(measured["metrics"]["api_equivalent"]) == Decimal("100")
+            assert measured["measurement"]["sample_size"] == "10"
+            encoded = json.dumps(measured)
+            assert "private-task-9f3a" not in encoded
+            assert "Infinity" not in encoded and "NaN" not in encoded
+            catalog = client.get("/v1/catalog")
+            assert catalog.status_code == 200
+            catalog_text = catalog.text
+            assert "private-task-9f3a" not in catalog_text
+            assert "2.5" not in catalog_text
+    finally:
+        _stop(proc)
+    exported = subprocess.run(
+        [sys.executable, "-m", "agent_costbook.export", "--db", str(db)],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+    )
+    assert exported.returncode == 0, exported.stderr
+    exported_text = exported.stdout.decode()
+    assert "private-task-9f3a" not in exported_text
+    assert "ac-formulas-v2" in exported_text
+    snapshot = tmp_path / "snapshot.json"
+    snapshot.write_bytes(exported.stdout)
+    request = tmp_path / "request.json"
+    request.write_text(
+        json.dumps(
+            {
+                "method": "M3",
+                "currency": "USD",
+                "candidates": [candidate],
+            }
+        ),
+        encoding="utf-8",
+    )
+    offline = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "agent_costbook.offline",
+            "estimate",
+            "--snapshot",
+            str(snapshot),
+            "--request",
+            str(request),
+            "--publisher",
+            json.loads(exported.stdout)["publisher_id"],
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+    )
+    assert offline.returncode == 0, offline.stderr
+    offline_result = json.loads(offline.stdout)["results"][0]
+    assert Decimal(offline_result["metrics"]["K"]) == Decimal("0.2")
+    request.write_text(
+        json.dumps({"method": "M7", "currency": "USD", "task_category": "coding", "acceptance": "tests_passed", "candidates": [candidate]}),
+        encoding="utf-8",
+    )
+    offline_m7 = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "agent_costbook.offline",
+            "estimate",
+            "--snapshot",
+            str(snapshot),
+            "--request",
+            str(request),
+            "--publisher",
+            json.loads(exported.stdout)["publisher_id"],
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        check=False,
+    )
+    assert offline_m7.returncode == 0, offline_m7.stderr
+    assert json.loads(offline_m7.stdout)["results"][0]["status"] == "missing_data"
+    assert "2.5" not in offline_m7.stdout.decode()

@@ -1,12 +1,15 @@
 # agent-costbook
 
 Local service for traceable AI model pricing, subscription amortization, and
-per-task API cost estimates. Version 0.3 stores evidence, research Markdown,
-API rates, and subscription inputs in SQLite. It calculates M0 display, M1
-quota price, M2 task amortization, M4 task cost, and M6 budget amortization.
-M3, M5, and M7 respond with `unsupported_method`. A snapshot whose
-`formula_version` is not `ac-formulas-v1` is refused as `unsupported_formula`
-instead of being recalculated with the current formulas.
+per-task API cost estimates. Version 0.4 stores evidence, research Markdown,
+API rates, subscription inputs, and explicit task-result imports in SQLite.
+It calculates M0 display, M1 quota price, M2 task amortization, M3
+capability-adjusted amortization, M4 task cost, M5 capability-adjusted task
+cost, M6 budget amortization, and M7 measured cost per successful task.
+New publications use formula set `ac-formulas-v2`. A file or stored snapshot
+whose formula set is `ac-formulas-v1` still calculates with the same M0–M6
+rules and is not rewritten. Any other formula set is refused as
+`unsupported_formula`.
 
 Design notes live in `.docs/`, which is outside this product Git history.
 
@@ -51,9 +54,26 @@ uv run ac estimate --snapshot snapshot.json --request examples/estimate-request.
 uv run ac collect --once --db agent_costbook.sqlite3
 ```
 
+M3 is M2 divided by an optional capability weight `w`. M5 is M4's task cost
+divided by the same `w`. Omitting `w` uses 1 and is labeled
+`capability_proxy_disabled`. A supplied `w` is a linear index proxy, not a
+measured success rate, and the result says `do_not_reweight_for_routing` so a
+router does not apply that weight again. M7 is imported attributed cash
+divided by the number of distinct tasks that finally succeeded. Failed and
+retried attempts stay in the cash total and do not add another success. A
+period subscription amount is added once. API-equivalent amounts are reported
+separately and are not added to cash. Zero successes with positive cash is
+`unbounded`; zero successes with zero cash is `insufficient_data`. Neither
+status emits NaN or Infinity. `POST /v1/observations` uses the same admin
+token as contributions. Those rows are not part of `GET /v1/catalog` or the
+export file. An estimate names `task_category`, `acceptance`, and the
+candidate window; a missing sample stays `missing_data`.
+
 `ac estimate` reads one published snapshot file, checks its kind, schema,
 publisher, `snap-N` version, record hash, and formula set, then uses the same
 calculation core as `POST /v1/estimates`. It does not rebuild a database.
+M7 measurements are not in the public snapshot, so offline M7 stays
+`missing_data` unless the service that holds the import answers the request.
 Publications written by this version include `scope.task_profile` and
 `scope.baseline_group` so a reference comparison can be repeated offline.
 Older snapshot files keep their original bytes and do not gain those keys on

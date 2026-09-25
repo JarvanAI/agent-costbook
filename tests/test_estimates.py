@@ -102,7 +102,7 @@ def test_reasoning_larger_than_billed_output_is_invalid_usage():
 
 
 def test_unimplemented_methods_are_unsupported():
-    for method in ("M3", "M5", "M7", "M9"):
+    for method in ("M9",):
         result = _run(method=method)
         assert result["status"] == "unsupported_method"
         assert result["metrics"] is None

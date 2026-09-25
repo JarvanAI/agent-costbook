@@ -1,6 +1,6 @@
 [project]
 name = "agent-costbook"
-version = "0.3.0"
+version = "0.4.0"
 description = "Local service for traceable AI model pricing data and task-cost estimates"
 readme = "README.md"
 requires-python = ">=3.12"

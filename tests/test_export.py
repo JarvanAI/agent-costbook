@@ -75,7 +75,7 @@ def test_export_is_stable_and_hash_matches_records_only(tmp_path):
     document = json.loads(current.stdout)
     assert document["kind"] == "agent-costbook.snapshot"
     assert document["schema_version"] == 1
-    assert document["formula_version"] == "ac-formulas-v1"
+    assert document["formula_version"] == "ac-formulas-v2"
     assert document["data_version"] == 2
     assert document["snapshot_id"] == "snap-2"
     assert document["freshness"] is None

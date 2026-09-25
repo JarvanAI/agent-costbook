@@ -375,7 +375,7 @@ def test_http_envelope_matches_export_and_private_plan_price_is_not_stored(tmp_p
     catalog = client.get("/v1/catalog").json()
     assert catalog["data_version"] == 1
     assert catalog["snapshot_id"] == "snap-1"
-    assert catalog["formula_version"] == "ac-formulas-v1"
+    assert catalog["formula_version"] == "ac-formulas-v2"
     assert catalog["publisher_id"]
     missing = client.get("/v1/catalog", params={"snapshot_id": "snap-99"})
     assert missing.status_code == 404
@@ -416,7 +416,7 @@ def test_http_envelope_matches_export_and_private_plan_price_is_not_stored(tmp_p
     body = estimate.json()
     assert body["data_version"] == 1
     assert body["snapshot_id"] == "snap-1"
-    assert body["formula_version"] == "ac-formulas-v1"
+    assert body["formula_version"] == "ac-formulas-v2"
     assert body["content_sha256"] == catalog["content_sha256"]
     result = body["results"][0]
     assert result["formula_version"] == "m6-v1"
