@@ -8,6 +8,7 @@
 - [docs/research/aa-data-acquisition.md](docs/research/aa-data-acquisition.md)：2026-09-27 读取 Artificial Analysis 公开 API、OpenAPI 和网页的步骤
 - [docs/research/aa-storage-findings.md](docs/research/aa-storage-findings.md)：这些读数与当前能力目录字段的差距
 - [docs/design/benchmark-records-extension.md](docs/design/benchmark-records-extension.md)：独立评测记录资源提案，尚未实现
+- [docs/design/catalog-initialization-update.md](docs/design/catalog-initialization-update.md)：初始化与更新的 Skill/CLI 设计，尚未实现
 
 研究笔记描述公开来源和现有字段。代码仓库的许可证不覆盖 Artificial Analysis 的数据。笔记里的分数示例不是一份可再分发的数据集。
 
