@@ -10,6 +10,14 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from agent_costbook.capabilities import CapabilityError
+from agent_costbook.capabilities import current_catalog as current_catalog_rows
+from agent_costbook.capabilities import read_agent as read_agent_row
+from agent_costbook.capabilities import read_agent_history as read_agent_history_rows
+from agent_costbook.capabilities import read_model_effort as read_model_effort_row
+from agent_costbook.capabilities import read_model_effort_history as read_model_effort_history_rows
+from agent_costbook.capabilities import save_agent as save_agent_row
+from agent_costbook.capabilities import save_model_effort as save_model_effort_row
 from agent_costbook.migrations import (
     SCHEMA_VERSION,
     MigrationError,
@@ -156,18 +164,30 @@ class Store:
         ).fetchone()
         return publisher is not None
 
+    def _capability_ready(self) -> bool:
+        tables = {
+            row[0]
+            for row in self._conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'")
+        }
+        return {
+            "capability_agent_history",
+            "capability_model_effort_history",
+        } <= tables
+
     def _migrate(self) -> None:
         version = int(self._conn.execute("PRAGMA user_version").fetchone()[0])
+        ready = self._schema_ready() and self._capability_ready()
         if version > SCHEMA_VERSION:
             raise StoreError("future_schema")
-        if version == SCHEMA_VERSION and self._schema_ready():
+        if version == SCHEMA_VERSION and ready:
             return
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             action = schema_action(self._conn)
+            ready = self._schema_ready() and self._capability_ready()
             if action == "future":
                 raise StoreError("future_schema")
-            if action == "current" and self._schema_ready():
+            if action == "current" and ready:
                 self._conn.execute("ROLLBACK")
                 return
             apply_schema(self._conn)
@@ -175,6 +195,52 @@ class Store:
         except Exception:
             self._conn.rollback()
             raise
+
+    def _capability_write(self, write, payload: dict) -> dict:
+        self._conn.execute("BEGIN IMMEDIATE")
+        try:
+            saved = write(self._conn, payload)
+        except CapabilityError as exc:
+            self._conn.rollback()
+            raise StoreError(exc.code) from exc
+        except Exception:
+            self._conn.rollback()
+            raise
+        self._conn.commit()
+        return saved
+
+    @_locked
+    def current_capabilities(self) -> dict:
+        return current_catalog_rows(self._conn)
+
+    @_locked
+    def save_agent_capability(self, payload: dict) -> dict:
+        return self._capability_write(save_agent_row, payload)
+
+    @_locked
+    def agent_capability(self, agent_id: str) -> dict | None:
+        return read_agent_row(self._conn, agent_id)
+
+    @_locked
+    def agent_capability_history(self, agent_id: str) -> list[dict] | None:
+        return read_agent_history_rows(self._conn, agent_id)
+
+    @_locked
+    def save_model_effort(self, payload: dict) -> dict:
+        return self._capability_write(save_model_effort_row, payload)
+
+    @_locked
+    def model_effort(self, provider: str, model: str, effort: str | None) -> dict | None:
+        return read_model_effort_row(self._conn, provider, model, effort)
+
+    @_locked
+    def model_effort_history(
+        self,
+        provider: str,
+        model: str,
+        effort: str | None,
+    ) -> list[dict] | None:
+        return read_model_effort_history_rows(self._conn, provider, model, effort)
 
     def create_contribution(self, payload: dict, idempotency_key: str | None) -> tuple[dict, bool]:
         digest = hashlib.sha256(_canonical(payload).encode("utf-8")).hexdigest()

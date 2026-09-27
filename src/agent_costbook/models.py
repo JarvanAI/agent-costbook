@@ -146,6 +146,7 @@ class CandidateIn(BaseModel):
     private_rates: RateCard | None = None
     private_subscription: PrivateSubscriptionIn | None = None
     marginal_cash: str | None = None
+    agent_id: str | None = Field(default=None, min_length=1, max_length=160)
 
     @field_validator("marginal_cash")
     @classmethod

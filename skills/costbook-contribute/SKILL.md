@@ -81,3 +81,16 @@ curl -sS -X POST "http://127.0.0.1:8080/v1/observations" \
 ```
 
 `observation.json` names the same provider, channel, model, effort, plan, feature scope, and currency as an estimate candidate. `period_start` and `period_end` are ISO timestamps and must both include a timezone or both omit it; mixing them returns 422. `subscription_cash` is the period fee counted once, and each task has a `task_id` plus attempts of `cash`, optional `api_equivalent`, and `succeeded`. The same task id counts as one success even if a later attempt also succeeds. Cash from failed and retried attempts is kept. API-equivalent amounts are not cash. The same key with a different body returns 409, and a second different body for the same scope also returns 409. The service does not read agent credentials and does not copy task text into the catalog or export. Ask for M7 with the admin token, `task_category`, `acceptance`, and the candidate's `window_start` / `window_end`. The result repeats the import `observation_id`. A public M7 request is 401 and does not reveal the cash. No imported sample returns `missing_data`. `S = 0` with cash above 0 returns `unbounded`; `S = 0` with cash 0 returns `insufficient_data`.
+
+## Capability catalog
+
+Do not put Agent strengths, model suitability, or benchmark scores into a price contribution. Those rows use the admin token on `/v1/capabilities/agents` and `/v1/capabilities/model-efforts`. A user observation must set `source` to `user_observation` and may omit `source_ref`. `aa`, `official`, `community`, and `unofficial` are labels for a source you already read; this service does not crawl Artificial Analysis or fetch `source_ref`. Leave unknown text, context length, benchmarks, and citations null. A benchmark uses the same source labels and an optional `source_ref`. Do not invent a score, `low`, or `poor fit`. `expected_version` is `0` on the first write. A model name may contain `/`, so send `provider`, `model`, and `effort` in JSON or query parameters. An empty effort is the real null-effort row, not `low`. `default_for_agents` is the sweet spot for that provider and model, and the same Agent cannot be current on two efforts of one model.
+
+`ac estimate` cannot see this catalog. Its `capabilities.status` is `unavailable`. Only an authorized HTTP estimate returns the stored rows, including when the price result is `missing_data` or `unsupported_method`. A request without the admin token keeps the price and returns `capabilities.status` `not_authorized`.
+
+```sh
+curl -sS -X PUT "http://127.0.0.1:8080/v1/capabilities/agents" \
+  -H "Authorization: Bearer $ACB_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id":"agent-1","expected_version":0,"source":"user_observation","as_of":"2026-09-27T00:00:00+00:00","strengths":"edits files in this workspace"}'
+```

@@ -6,7 +6,7 @@ import sys
 import uuid
 from pathlib import Path
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 _SCHEMA_DDL = (
     """
@@ -145,8 +145,38 @@ def _add_column(connection: sqlite3.Connection, table: str, column: str, definit
         connection.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
+_CAPABILITY_DDL = (
+    """
+    CREATE TABLE IF NOT EXISTS capability_agent_history (
+        agent_id TEXT NOT NULL,
+        row_version INTEGER NOT NULL,
+        recorded_at TEXT NOT NULL,
+        body_json TEXT NOT NULL,
+        PRIMARY KEY (agent_id, row_version)
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS capability_model_effort_history (
+        provider TEXT NOT NULL,
+        model TEXT NOT NULL,
+        effort_key TEXT NOT NULL,
+        row_version INTEGER NOT NULL,
+        recorded_at TEXT NOT NULL,
+        body_json TEXT NOT NULL,
+        PRIMARY KEY (provider, model, effort_key, row_version)
+    )
+    """,
+)
+
+
+def _apply_capability_schema(connection: sqlite3.Connection) -> None:
+    """Append-only capability history. Price tables are not rewritten here."""
+    for statement in _CAPABILITY_DDL:
+        connection.execute(statement)
+
+
 def apply_schema(connection: sqlite3.Connection) -> None:
-    """Apply the frozen v1 schema. The caller owns the transaction."""
+    """Apply the current schema. The caller owns the transaction."""
     from agent_costbook.store import LEGACY_FORMULA_SET
 
     for statement in _SCHEMA_DDL:
@@ -169,6 +199,7 @@ def apply_schema(connection: sqlite3.Connection) -> None:
             "INSERT INTO publisher_identity (singleton, publisher_id) VALUES (1, ?)",
             (f"pub_{uuid.uuid4().hex}",),
         )
+    _apply_capability_schema(connection)
     connection.execute(f"PRAGMA user_version = {SCHEMA_VERSION}")
 
 

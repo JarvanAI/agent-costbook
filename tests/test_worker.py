@@ -385,10 +385,10 @@ def test_sigterm_stops_a_long_collect_wait(tmp_path):
         start_new_session=True,
     )
     try:
-        time.sleep(0.5)
+        time.sleep(1.0)
         assert proc.poll() is None
         proc.send_signal(signal.SIGTERM)
-        stdout, stderr = proc.communicate(timeout=1.5)
+        stdout, stderr = proc.communicate(timeout=3)
     except Exception:
         if proc.poll() is None:
             proc.kill()

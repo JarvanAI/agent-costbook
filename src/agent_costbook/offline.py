@@ -9,6 +9,7 @@ from pathlib import Path
 
 from pydantic import ValidationError
 
+from agent_costbook.capabilities import unavailable_capability
 from agent_costbook.estimates import freshness_view, run_estimate
 from agent_costbook.export import _canonical
 from agent_costbook.models import EstimateIn
@@ -256,6 +257,7 @@ def estimate_snapshot(
         result["publisher_id"] = document["publisher_id"]
         result["data_version"] = document["data_version"]
         result["snapshot_id"] = document["snapshot_id"]
+        result["capabilities"] = unavailable_capability()
     payload = {
         "kind": document["kind"],
         "schema_version": document["schema_version"],

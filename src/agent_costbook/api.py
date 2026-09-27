@@ -6,6 +6,7 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.responses import JSONResponse, PlainTextResponse
 
 from agent_costbook import __version__
+from agent_costbook.capabilities import AgentCapabilityIn, ModelEffortIn, capability_view
 from agent_costbook.estimates import run_estimate
 from agent_costbook.export import catalog_document
 from agent_costbook.models import CandidateIn, ContributionIn, EstimateIn, ObservationIn
@@ -51,6 +52,29 @@ def _authorized(settings: Settings, authorization: str | None) -> bool:
 def _require_admin(settings: Settings, authorization: str | None) -> None:
     if not _authorized(settings, authorization):
         raise HTTPException(status_code=401, detail="admin token required")
+
+
+def _bounded(value: str, limit: int, label: str) -> str:
+    if not value or len(value) > limit:
+        raise HTTPException(status_code=422, detail=f"{label} is invalid")
+    return value
+
+
+def _effort_query(effort: str | None) -> str | None:
+    if effort is None or effort == "":
+        return None
+    if len(effort) > 80 or not effort.strip():
+        raise HTTPException(status_code=422, detail="effort is invalid")
+    return effort
+
+
+def _capability_conflict(exc: StoreError):
+    if exc.code in {"version_conflict", "default_conflict"}:
+        return JSONResponse(
+            status_code=409,
+            content={"status": "conflict", "detail": exc.code},
+        )
+    raise exc
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -154,6 +178,87 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise
         return JSONResponse(status_code=201 if created else 200, content=recorded)
 
+    @app.get("/v1/capabilities")
+    def list_capabilities(authorization: str | None = Header(default=None)):
+        _require_admin(resolved, authorization)
+        return store.current_capabilities()
+
+    @app.put("/v1/capabilities/agents")
+    def put_agent(
+        body: AgentCapabilityIn,
+        authorization: str | None = Header(default=None),
+    ):
+        _require_admin(resolved, authorization)
+        try:
+            return store.save_agent_capability(body.model_dump(mode="json"))
+        except StoreError as exc:
+            return _capability_conflict(exc)
+
+    @app.get("/v1/capabilities/agents")
+    def get_agent(
+        agent_id: str,
+        authorization: str | None = Header(default=None),
+    ):
+        _require_admin(resolved, authorization)
+        _bounded(agent_id, 160, "agent_id")
+        row = store.agent_capability(agent_id)
+        if row is None:
+            raise HTTPException(status_code=404, detail="capability not found")
+        return row
+
+    @app.get("/v1/capabilities/agents/history")
+    def get_agent_history(
+        agent_id: str,
+        authorization: str | None = Header(default=None),
+    ):
+        _require_admin(resolved, authorization)
+        _bounded(agent_id, 160, "agent_id")
+        rows = store.agent_capability_history(agent_id)
+        if rows is None:
+            raise HTTPException(status_code=404, detail="capability not found")
+        return rows
+
+    @app.put("/v1/capabilities/model-efforts")
+    def put_model_effort(
+        body: ModelEffortIn,
+        authorization: str | None = Header(default=None),
+    ):
+        _require_admin(resolved, authorization)
+        try:
+            return store.save_model_effort(body.model_dump(mode="json"))
+        except StoreError as exc:
+            return _capability_conflict(exc)
+
+    @app.get("/v1/capabilities/model-efforts")
+    def get_model_effort(
+        provider: str,
+        model: str,
+        effort: str | None = None,
+        authorization: str | None = Header(default=None),
+    ):
+        _require_admin(resolved, authorization)
+        _bounded(provider, 120, "provider")
+        _bounded(model, 200, "model")
+        row = store.model_effort(provider, model, _effort_query(effort))
+        if row is None:
+            raise HTTPException(status_code=404, detail="capability not found")
+        return row
+
+    @app.get("/v1/capabilities/model-efforts/history")
+    def get_model_effort_history(
+        provider: str,
+        model: str,
+        effort: str | None = None,
+        authorization: str | None = Header(default=None),
+    ):
+        _require_admin(resolved, authorization)
+        _bounded(provider, 120, "provider")
+        _bounded(model, 200, "model")
+        rows = store.model_effort_history(provider, model, _effort_query(effort))
+        if rows is None:
+            raise HTTPException(status_code=404, detail="capability not found")
+        return rows
+
     @app.post("/v1/estimates")
     def estimates(
         body: EstimateIn,
@@ -161,6 +266,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict:
         if body.method == "M7":
             _require_admin(resolved, authorization)
+        authorized = _authorized(resolved, authorization)
         revision = store.revision_of(body.snapshot_id)
         if body.snapshot_id is not None and revision is None:
             raise HTTPException(status_code=404, detail="snapshot not found")
@@ -218,10 +324,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             formula_set=published.get("formula_version"),
         )
         published.pop("records")
-        for result in results:
+        for result, candidate in zip(results, body.candidates, strict=True):
             result["publisher_id"] = published["publisher_id"]
             result["data_version"] = published["data_version"]
             result["snapshot_id"] = published["snapshot_id"]
+            if authorized:
+                agent = (
+                    store.agent_capability(candidate.agent_id) if candidate.agent_id else None
+                )
+                model_effort = store.model_effort(
+                    candidate.provider,
+                    candidate.model,
+                    candidate.effort or None,
+                )
+            else:
+                agent = None
+                model_effort = None
+            result["capabilities"] = capability_view(
+                authorized=authorized,
+                agent=agent,
+                model_effort=model_effort,
+            )
         return {**published, "results": results}
 
     return app

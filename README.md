@@ -1,8 +1,9 @@
 # agent-costbook
 
 Local service for traceable AI model pricing, subscription amortization, and
-per-task API cost estimates. Version 1.0 freezes API v1 and snapshot
-`schema_version` 1. It stores evidence, research Markdown,
+per-task API cost estimates. Version 1.0 freezes the price API and snapshot
+`schema_version` 1. Database schema 2 adds a separate capability catalog.
+It stores evidence, research Markdown,
 API rates, subscription inputs, and explicit task-result imports in SQLite.
 It calculates M0 display, M1 quota price, M2 task amortization, M3
 capability-adjusted amortization, M4 task cost, M5 capability-adjusted task
@@ -151,7 +152,8 @@ network, and the offline tests use recorded fixtures. Freshness follows each
 source `retrieved_at`. M7 reports sample size, successful tasks, and
 `insufficient_data` or `unbounded`. This release does not add a savings-rate
 or quality-score gate. There is no multi-tenant control plane and no
-research-job endpoint.
+research-job endpoint. The capability catalog is not an AA crawler and is not
+synced into offline snapshots.
 
 ## HTTP
 
@@ -162,8 +164,71 @@ research-job endpoint.
 - `GET /v1/research/{id}` and `GET /v1/research/{id}?format=markdown`
 - `POST /v1/contributions`
 - `POST /v1/contributions/{id}/publish`
+- `GET /v1/capabilities`
+- `PUT /v1/capabilities/agents` and `GET /v1/capabilities/agents?agent_id=`
+- `GET /v1/capabilities/agents/history?agent_id=`
+- `PUT /v1/capabilities/model-efforts`
+- `GET /v1/capabilities/model-efforts?provider=&model=&effort=`
+- `GET /v1/capabilities/model-efforts/history?provider=&model=&effort=`
 
-A snapshot is the whole catalog as of that publication. Replacing an existing identity
+## Capability catalog
+
+Capability rows are local observations about an installed Agent or one
+model-effort tier. They are not price rows. Writing one does not change
+`data_version`, `content_sha256`, formula version, or export bytes. Every
+capability read and write uses `Authorization: Bearer $ACB_ADMIN_TOKEN`.
+A public estimate still prices the candidate, and its `capabilities` object
+is `status: not_authorized` with null `agent` and `model_effort`. An
+authorized estimate adds the current rows for the optional `agent_id` and the
+exact provider, model, and effort. Missing data stays null. An empty effort
+selects the real row whose effort is null; it does not fall back to `low`.
+`ac estimate` reads only the price snapshot, so it returns
+`status: unavailable` and cannot show this catalog. There is no offline sync
+and no AA crawler. `aa`, `official`, `community`, `unofficial`, and
+`user_observation` are source labels. User observations must use
+`user_observation` and may omit a URL. `source_ref` is an optional URL or
+document citation stored as text; the service does not fetch or run it.
+Unknown citations stay null. Do not invent a score for an unknown benchmark.
+
+Model names may contain `/`. Pass `provider`, `model`, and `effort` as JSON
+fields or query parameters, not as path segments. A write replaces the whole
+row. `expected_version` is `0` for the first write and the current
+`row_version` after that. A stale version or a second current sweet spot for
+the same Agent, provider, and model returns 409 and changes nothing.
+`default_for_agents` lists Agents that treat this tier as the default for
+that model. It does not list every Agent that can call the tier. Remove the
+id from the old row before adding it to another effort. Two Agents may share
+one tier. Different models are independent. Omitted text, context length, and
+benchmarks stay null. Text fields are at most 2000 characters, the default
+list at most 32 ids, and benchmarks at most 16 complete `{name, score, unit,
+source}` objects. A benchmark may also carry `source_ref`. `score` is a finite decimal string. `context_length` is a
+positive integer when it is known. `as_of` must include a timezone. Stored
+text is data, not a command.
+
+`GET /v1/capabilities` lists the current Agent and model-effort rows for an
+admin. It does not include history or price records. An empty catalog returns
+two empty arrays.
+
+```sh
+curl -sS "http://127.0.0.1:8080/v1/capabilities" \
+  -H "Authorization: Bearer $ACB_ADMIN_TOKEN"
+curl -sS -X PUT "http://127.0.0.1:8080/v1/capabilities/agents" \
+  -H "Authorization: Bearer $ACB_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"agent_id":"agent-1","expected_version":0,"source":"user_observation","as_of":"2026-09-27T00:00:00+00:00","strengths":"edits files in this workspace","can_edit_files":true}'
+curl -sS "http://127.0.0.1:8080/v1/capabilities/agents?agent_id=agent-1" \
+  -H "Authorization: Bearer $ACB_ADMIN_TOKEN"
+curl -sS -X PUT "http://127.0.0.1:8080/v1/capabilities/model-efforts" \
+  -H "Authorization: Bearer $ACB_ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"provider":"openai","model":"openai/gpt-4o-mini","effort":null,"expected_version":0,"source":"aa","as_of":"2026-09-27T00:00:00+00:00","benchmarks":null,"default_for_agents":["agent-1"]}'
+curl -sS "http://127.0.0.1:8080/v1/capabilities/model-efforts?provider=openai&model=openai/gpt-4o-mini" \
+  -H "Authorization: Bearer $ACB_ADMIN_TOKEN"
+curl -sS "http://127.0.0.1:8080/v1/capabilities/model-efforts/history?provider=openai&model=openai/gpt-4o-mini&effort=low" \
+  -H "Authorization: Bearer $ACB_ADMIN_TOKEN"
+```
+
+A snapshot is the whole price catalog as of that publication. Replacing an existing identity
 requires `base_snapshot_id` of the reviewed record version. Estimates pin one catalog
 revision for every candidate. Omitting usage does not mean the tokens were zero.
 There is no research-job endpoint.
