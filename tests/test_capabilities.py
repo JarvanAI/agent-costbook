@@ -405,6 +405,31 @@ def test_concurrent_connections_cannot_both_claim_or_both_update(tmp_path):
         store.close()
 
 
+def test_locked_commit_rolls_back_and_retry_writes_version_one(tmp_path):
+    db = tmp_path / "locked.sqlite3"
+    store = Store(db)
+    reader = sqlite3.connect(db)
+    try:
+        store._conn.execute("PRAGMA busy_timeout=20")
+        reader.execute("BEGIN")
+        reader.execute("SELECT name FROM sqlite_master").fetchall()
+        with pytest.raises(sqlite3.OperationalError, match="database is locked"):
+            store.save_agent_capability(_agent())
+        assert store._conn.in_transaction is False
+        assert store.agent_capability("agent-1") is None
+    finally:
+        reader.execute("ROLLBACK")
+        reader.close()
+    saved = store.save_agent_capability(_agent())
+    assert saved["row_version"] == 1
+    assert [item["row_version"] for item in store.agent_capability_history("agent-1")] == [1]
+    connection = sqlite3.connect(db)
+    count = connection.execute("SELECT COUNT(*) FROM capability_agent_history").fetchone()[0]
+    connection.close()
+    store.close()
+    assert count == 1
+
+
 def test_admin_estimates_attach_exact_rows_and_public_estimates_hide_them(tmp_path):
     client = _client(tmp_path)
     published = client.post(

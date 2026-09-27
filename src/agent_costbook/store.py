@@ -200,13 +200,13 @@ class Store:
         self._conn.execute("BEGIN IMMEDIATE")
         try:
             saved = write(self._conn, payload)
+            self._conn.commit()
         except CapabilityError as exc:
             self._conn.rollback()
             raise StoreError(exc.code) from exc
         except Exception:
             self._conn.rollback()
             raise
-        self._conn.commit()
         return saved
 
     @_locked
