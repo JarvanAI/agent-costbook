@@ -239,3 +239,11 @@ There is no research-job endpoint.
 uv sync --extra dev
 uv run pytest -q
 ```
+
+## Documentation
+
+Notes for the 2026-09-27 Artificial Analysis reading, and the repository guide that links them:
+
+- [AGENTS.md](AGENTS.md)
+- [Data acquisition](docs/research/aa-data-acquisition.md)
+- [Storage findings](docs/research/aa-storage-findings.md)
