@@ -10,6 +10,8 @@ from pathlib import Path
 from pydantic import ValidationError
 
 from agent_costbook.capabilities import unavailable_capability
+from agent_costbook.data_batch import register as register_data
+from agent_costbook.data_batch import run_data
 from agent_costbook.estimates import freshness_view, run_estimate
 from agent_costbook.export import _canonical
 from agent_costbook.models import EstimateIn
@@ -340,9 +342,12 @@ def main(argv: list[str] | None = None) -> int:
     collect.add_argument("--once", action="store_true")
     collect.add_argument("--max-runtime", type=float)
     collect.add_argument("--now")
+    register_data(commands)
     args = parser.parse_args(argv)
     if args.command == "collect":
         return _collect(args.db, args.now, args.max_runtime)
+    if args.command == "data":
+        return run_data(args)
     return _estimate(args)
 
 

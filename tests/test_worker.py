@@ -342,12 +342,41 @@ def test_bounded_loop_checks_stop_during_a_long_wait(tmp_path):
     store.close()
 
 
+def _wait_until_sigterm_is_caught(proc, timeout: float = 5.0) -> None:
+    """Wait until this process catches SIGTERM.
+
+    The collector installs that handler after startup. A fixed sleep can signal
+    before the handler exists. Without /proc, wait until the process is still
+    alive at the deadline and then return.
+    """
+    import signal
+    import time
+    from pathlib import Path
+
+    deadline = time.monotonic() + timeout
+    status = Path(f"/proc/{proc.pid}/status")
+    bit = 1 << (signal.SIGTERM - 1)
+    if not status.exists():
+        while time.monotonic() < deadline:
+            if proc.poll() is not None:
+                raise AssertionError("collect exited before it could catch SIGTERM")
+            time.sleep(0.05)
+        return
+    while time.monotonic() < deadline:
+        if proc.poll() is not None:
+            raise AssertionError("collect exited before it could catch SIGTERM")
+        for line in status.read_text(encoding="utf-8").splitlines():
+            if line.startswith("SigCgt:") and int(line.split()[1], 16) & bit:
+                return
+        time.sleep(0.02)
+    raise AssertionError("SIGTERM handler was not installed")
+
+
 def test_sigterm_stops_a_long_collect_wait(tmp_path):
     import os
     import signal
     import subprocess
     import sys
-    import time
     from pathlib import Path
 
     db = tmp_path / "sigterm.sqlite3"
@@ -385,10 +414,10 @@ def test_sigterm_stops_a_long_collect_wait(tmp_path):
         start_new_session=True,
     )
     try:
-        time.sleep(0.5)
+        _wait_until_sigterm_is_caught(proc)
         assert proc.poll() is None
         proc.send_signal(signal.SIGTERM)
-        stdout, stderr = proc.communicate(timeout=1.5)
+        stdout, stderr = proc.communicate(timeout=5)
     except Exception:
         if proc.poll() is None:
             proc.kill()

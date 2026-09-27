@@ -1,0 +1,61 @@
+{
+  "kind": "agent-costbook.data-scope",
+  "contract_version": 1,
+  "id": "example-public",
+  "server": "http://127.0.0.1:8080",
+  "visibility": "public",
+  "items": [
+    {
+      "item_id": "synthetic-price",
+      "category": "price",
+      "collection": "manual",
+      "mapping": "Synthetic public example. It is not a provider invoice.",
+      "source": {
+        "kind": "manual",
+        "ref": "fixture://synthetic-price",
+        "retrieved_at": "2026-09-28T00:00:00+00:00"
+      },
+      "candidate": {
+        "research": {
+          "title": "Synthetic example price",
+          "markdown": "Example only. Not a live price.\n"
+        },
+        "evidence": [
+          {
+            "source_kind": "synthetic_fixture",
+            "source_url": "fixture://synthetic-price",
+            "collector_kind": "agent",
+            "collector_name": "example",
+            "content": "synthetic uncached input 1 USD per million tokens",
+            "retrieved_at": "2026-09-28T00:00:00+00:00"
+          }
+        ],
+        "record": {
+          "provider": "example",
+          "channel": "api",
+          "model": "example-small",
+          "effort": "",
+          "plan": "payg",
+          "feature_scope": "text",
+          "currency": "USD",
+          "rates": {
+            "uncached_input_per_million": "1",
+            "billed_output_per_million": "2"
+          }
+        }
+      }
+    },
+    {
+      "item_id": "missing-official-price",
+      "category": "price",
+      "collection": "agent",
+      "mapping": "No source supplied a price for this model."
+    },
+    {
+      "item_id": "coding-agent-gap",
+      "category": "coding_agent",
+      "collection": "agent",
+      "mapping": "A coding-agent score names a harness, a model, and a setting. This catalog cannot store that combination."
+    }
+  ]
+}

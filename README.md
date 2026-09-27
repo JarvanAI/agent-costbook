@@ -122,6 +122,47 @@ are published as a new snapshot whose record `status` is `conflict` and whose
 Unknown prices are omitted, not stored as 0. The service does not run a
 research agent.
 
+`ac data` plans, checks, diffs, applies, and verifies a local batch of price
+and capability rows against the HTTP API above. It does not start the service,
+does not delete rows, and does not add a benchmark or private-quota store.
+`skills/costbook-initialize/SKILL.md` is the workflow. Contribution and
+capability fields stay in `skills/costbook-contribute/SKILL.md`. An example
+scope is `examples/data-scope.json`; `examples/data-batch/` is the batch that
+`plan` writes from it.
+
+```sh
+uv run ac data plan --mode init --scope examples/data-scope.json --out examples/data-batch
+uv run ac data validate --batch examples/data-batch
+uv run ac data diff --batch examples/data-batch --server http://127.0.0.1:8080
+uv run ac data apply --batch examples/data-batch --approved-diff-sha256 PLAN_SHA256 \
+  --server http://127.0.0.1:8080 \
+  --backup-source "$ACB_DB" --backup-destination examples/data-batch/backup.sqlite3
+uv run ac data verify --receipt examples/data-batch/receipt.json --server http://127.0.0.1:8080
+```
+
+The token is `ACB_ADMIN_TOKEN` in the environment. The server URL has to be
+loopback, with no userinfo, and redirects are refused. `diff` prints the
+sha256 of canonical `plan.json`; that file binds the server, publisher, batch
+bytes, record identity, baseline version, and complete target. `plan.md` is
+only for reading. Apply refuses a different hash, server, or publisher before
+it writes. A row whose version moved and whose content differs is left as
+`conflict`. The same business content writes nothing on a second apply.
+
+A write needs a backup. `--backup-source` and `--backup-destination` copy the
+database with the existing backup helper and then set the new file to mode
+`0600`; the directory must be private. `agent-costbook-backup` itself is
+unchanged and still creates mode `0644`. `--backup-receipt` accepts an
+operator backup whose server, publisher, catalog version, content hash, and
+file sha256 match the current service. The backup file must be private, and
+its publisher, price snapshot, and capability rows must match that service. A
+copy of a different or older database does not authorize writes. The fixed OpenRouter parser, when
+given a local fixture, reads only `openai/gpt-4o-mini`. It does not fetch the
+network. Coding-agent combinations, private quotas, and other unsupported
+categories are refused instead of being stored as price rows. A lost publish
+is settled from `GET /v1/evidence` for the contribution id saved in the
+journal, or by publishing that same id again. There is no contribution-status
+endpoint, and an unknown contribution is not replayed.
+
 ## Support
 
 | Surface | v1.0 |
