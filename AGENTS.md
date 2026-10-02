@@ -1,14 +1,18 @@
 # agent-costbook
 
-本地服务，保存可追溯的模型价格、订阅输入和任务成本估算。产品行为见 [README.md](README.md)。
+为 agent-router（ar）的 Agent、model、effort 选择提供可追溯的价格、能力事实与成本估算。ac 维护来源、时间和版本，ar 做选择决策；其他工具也可独立使用 ac。产品行为见 [README.md](README.md)。
 
 ## 文档
 
-- [README.md](README.md)：运行、HTTP、能力目录和测试
+- [README.md](README.md) / [README.zh-CN.md](README.zh-CN.md)：定位、ac/ar 关系、上手示例与支持范围
+- [docs/reference.md](docs/reference.md)：运行、HTTP、公式、能力目录和备份参考
+- [CONTRIBUTING.md](CONTRIBUTING.md)：代码与数据贡献流程
+- [docs/data-sources.md](docs/data-sources.md)：来源、新鲜度、第三方数据权利和私有资料边界
+- [docs/design/open-source-launch.md](docs/design/open-source-launch.md)：2026-10-02 已确认的开源定位与发布范围
 - [docs/research/aa-data-acquisition.md](docs/research/aa-data-acquisition.md)：2026-09-27 读取 Artificial Analysis 公开 API、OpenAPI 和网页的步骤
 - [docs/research/aa-storage-findings.md](docs/research/aa-storage-findings.md)：这些读数与当前能力目录字段的差距
 - [docs/research/catalog-refresh-20261001.md](docs/research/catalog-refresh-20261001.md)：增量更新的方法、来源映射、精度和字段缺口；本轮原始证据及私有额度资料不公开
-- [docs/research/open-source-readme-20261002.md](docs/research/open-source-readme-20261002.md)：README 与开源发布调研，含定位、宣传语、语言、许可证和发布范围候选；尚待维护者确认
+- [docs/research/open-source-readme-20261002.md](docs/research/open-source-readme-20261002.md)：README 与开源发布调研及历史候选；已确认决策见上方开源设计
 - [docs/design/benchmark-records-extension.md](docs/design/benchmark-records-extension.md)：独立评测记录资源提案，尚未实现
 - [docs/design/catalog-initialization-update.md](docs/design/catalog-initialization-update.md)：价格与能力的初始化/更新已由 `ac data` 和 `skills/costbook-initialize/` 实现；组合评测与私有配额仍未接入
 

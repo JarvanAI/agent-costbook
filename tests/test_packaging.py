@@ -12,12 +12,21 @@ PUBLIC_PATHS = (
     "examples",
     "skills",
     "README.md",
+    "README.zh-CN.md",
+    "LICENSE",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "AGENTS.md",
+    "docs",
+    "scripts",
     "pyproject.toml",
     "uv.lock",
     ".env.example",
 )
-EXCLUDED_PARTS = frozenset({".docs", "hgit", ".worktree", ".git", ".venv"})
+EXCLUDED_PARTS = frozenset({".docs", "hgit", ".worktree", ".git", ".venv", "private"})
 SENTINELS = {
+    "data/private/observations/sentinel.json": "private-observation-release-sentinel\n",
+    "data/catalog.sqlite3": "local-database-release-sentinel\n",
     ".docs/private-contract.md": "local development contract\n",
     "hgit/ao/installation.json": "{}\n",
     ".worktree/receipt.json": "{}\n",
@@ -35,13 +44,22 @@ REQUIRED_SDIST_MEMBERS = (
     "pyproject.toml",
     "uv.lock",
     ".env.example",
+    "LICENSE",
+    "README.zh-CN.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
+    "AGENTS.md",
+    "docs/reference.md",
+    "docs/data-sources.md",
+    "scripts/check-docs.py",
+    "scripts/check-demo.py",
     "PKG-INFO",
 )
 
 
 def _is_excluded_member(name: str) -> bool:
     parts = name.split("/")
-    return ".env" in parts or any(part in EXCLUDED_PARTS for part in parts)
+    return "data" in parts or ".env" in parts or any(part in EXCLUDED_PARTS for part in parts)
 
 
 def _seed_project(tmp_path: Path) -> Path:
@@ -115,6 +133,13 @@ def test_sdist_and_wheel_keep_public_files_and_drop_seeded_local_files(tmp_path)
     assert len(scripts) == 1
     with zipfile.ZipFile(wheels[0]) as archive:
         entry_points = archive.read(scripts[0]).decode("utf-8")
+        package_metadata = archive.read(metadata[0]).decode("utf-8")
+        license_files = [name for name in wheel_names if name.endswith(".dist-info/licenses/LICENSE")]
+        assert len(license_files) == 1
+        assert archive.read(license_files[0]).decode("utf-8") == (ROOT / "LICENSE").read_text()
+    assert "License-Expression: MIT" in package_metadata
+    assert "License-File: LICENSE" in package_metadata
+    assert "License-Expression: MIT" in _sdist_text(sdists[0], f"{SDIST_PREFIX}PKG-INFO")
     for command in (
         "ac = agent_costbook.offline:main",
         "agent-costbook-export = agent_costbook.export:main",
@@ -123,7 +148,7 @@ def test_sdist_and_wheel_keep_public_files_and_drop_seeded_local_files(tmp_path)
     ):
         assert command in entry_points
     assert not any(
-        name.startswith(("tests/", "examples/", "skills/", "src/")) or name == ".env.example"
+        name.startswith(("tests/", "examples/", "skills/", "src/", "docs/", "scripts/")) or name == ".env.example"
         for name in wheel_names
     )
 

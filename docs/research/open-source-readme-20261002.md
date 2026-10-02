@@ -1,6 +1,6 @@
 # README 与开源发布调研（2026-10-02）
 
-状态：调研与候选方案，定位、宣传语、许可证、语言和发布范围待维护者确认。本文件不是批准后的发布计划。
+状态：2026-10-02 维护者已确认推荐的定位、宣传语、MIT、双语入口和 GitHub 源码发布范围，并补充 ac 为 ar 的选择决策提供最新事实依据。最终决策与执行范围见 [开源发布设计](../design/open-source-launch.md)。以下保留调研时的现状和候选，不是当前发布状态。
 
 本报告由协调 Agent 阅读现有实现、运行验证并检索公开一手资料后整理。用户指定的 Antigravity 调研 impler 已启动，但两次调用均在执行途中返回 `FAILED_PRECONDITION: User location is not supported for the API use`，未产出报告；不得将本文描述成该 impler 的成功交付。
 

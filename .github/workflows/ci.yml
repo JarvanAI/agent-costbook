@@ -1,0 +1,24 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@v10
+        with:
+          python-version: '3.12'
+      - run: uv sync --locked --extra dev
+      - run: uv run --locked pytest -q
+      - run: uv build
+      - run: uv run --locked python scripts/check-docs.py
+      - run: uv run --locked python scripts/check-demo.py

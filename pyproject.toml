@@ -1,7 +1,9 @@
 [project]
 name = "agent-costbook"
 version = "1.0.0"
-description = "Local service for traceable AI model pricing data and task-cost estimates"
+description = "Traceable costs and capabilities for AI agents"
+license = "MIT"
+license-files = ["LICENSE"]
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -9,6 +11,11 @@ dependencies = [
   "pydantic>=2",
   "uvicorn>=0.32",
 ]
+
+[project.urls]
+Homepage = "https://github.com/JarvanAI/agent-costbook"
+Repository = "https://github.com/JarvanAI/agent-costbook"
+Issues = "https://github.com/JarvanAI/agent-costbook/issues"
 
 [project.optional-dependencies]
 dev = [
@@ -33,6 +40,13 @@ only-include = [
   "examples",
   "skills",
   "README.md",
+  "README.zh-CN.md",
+  "LICENSE",
+  "CONTRIBUTING.md",
+  "SECURITY.md",
+  "AGENTS.md",
+  "docs",
+  "scripts",
   "pyproject.toml",
   "uv.lock",
   ".env.example",
