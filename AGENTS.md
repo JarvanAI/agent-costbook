@@ -8,6 +8,7 @@
 - [docs/research/aa-data-acquisition.md](docs/research/aa-data-acquisition.md)：2026-09-27 读取 Artificial Analysis 公开 API、OpenAPI 和网页的步骤
 - [docs/research/aa-storage-findings.md](docs/research/aa-storage-findings.md)：这些读数与当前能力目录字段的差距
 - [docs/research/catalog-refresh-20261001.md](docs/research/catalog-refresh-20261001.md)：增量更新的方法、来源映射、精度和字段缺口；本轮原始证据及私有额度资料不公开
+- [docs/research/open-source-readme-20261002.md](docs/research/open-source-readme-20261002.md)：README 与开源发布调研，含定位、宣传语、语言、许可证和发布范围候选；尚待维护者确认
 - [docs/design/benchmark-records-extension.md](docs/design/benchmark-records-extension.md)：独立评测记录资源提案，尚未实现
 - [docs/design/catalog-initialization-update.md](docs/design/catalog-initialization-update.md)：价格与能力的初始化/更新已由 `ac data` 和 `skills/costbook-initialize/` 实现；组合评测与私有配额仍未接入
 
