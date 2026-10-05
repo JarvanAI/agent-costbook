@@ -49,8 +49,22 @@ def _authorized(settings: Settings, authorization: str | None) -> bool:
     return hmac.compare_digest(provided, settings.admin_token)
 
 
+def _read_authorized(settings: Settings, authorization: str | None) -> bool:
+    if _authorized(settings, authorization):
+        return True
+    if not settings.read_token or not authorization or not authorization.startswith("Bearer "):
+        return False
+    provided = authorization.removeprefix("Bearer ")
+    return hmac.compare_digest(provided, settings.read_token)
+
+
 def _require_admin(settings: Settings, authorization: str | None) -> None:
     if not _authorized(settings, authorization):
+        raise HTTPException(status_code=401, detail="admin token required")
+
+
+def _require_reader(settings: Settings, authorization: str | None) -> None:
+    if not _read_authorized(settings, authorization):
         raise HTTPException(status_code=401, detail="admin token required")
 
 
@@ -180,7 +194,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/v1/capabilities")
     def list_capabilities(authorization: str | None = Header(default=None)):
-        _require_admin(resolved, authorization)
+        _require_reader(resolved, authorization)
         return store.current_capabilities()
 
     @app.put("/v1/capabilities/agents")
@@ -199,7 +213,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         agent_id: str,
         authorization: str | None = Header(default=None),
     ):
-        _require_admin(resolved, authorization)
+        _require_reader(resolved, authorization)
         _bounded(agent_id, 160, "agent_id")
         row = store.agent_capability(agent_id)
         if row is None:
@@ -211,7 +225,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         agent_id: str,
         authorization: str | None = Header(default=None),
     ):
-        _require_admin(resolved, authorization)
+        _require_reader(resolved, authorization)
         _bounded(agent_id, 160, "agent_id")
         rows = store.agent_capability_history(agent_id)
         if rows is None:
@@ -236,7 +250,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         effort: str | None = None,
         authorization: str | None = Header(default=None),
     ):
-        _require_admin(resolved, authorization)
+        _require_reader(resolved, authorization)
         _bounded(provider, 120, "provider")
         _bounded(model, 200, "model")
         row = store.model_effort(provider, model, _effort_query(effort))
@@ -251,7 +265,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         effort: str | None = None,
         authorization: str | None = Header(default=None),
     ):
-        _require_admin(resolved, authorization)
+        _require_reader(resolved, authorization)
         _bounded(provider, 120, "provider")
         _bounded(model, 200, "model")
         rows = store.model_effort_history(provider, model, _effort_query(effort))
@@ -266,7 +280,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     ) -> dict:
         if body.method == "M7":
             _require_admin(resolved, authorization)
-        authorized = _authorized(resolved, authorization)
+            authorized = _authorized(resolved, authorization)
+        else:
+            authorized = _read_authorized(resolved, authorization)
         revision = store.revision_of(body.snapshot_id)
         if body.snapshot_id is not None and revision is None:
             raise HTTPException(status_code=404, detail="snapshot not found")

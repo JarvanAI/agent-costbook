@@ -9,10 +9,12 @@ from pathlib import Path
 class Settings:
     db_path: Path
     admin_token: str
+    read_token: str = ""
 
 
 def load_settings() -> Settings:
     return Settings(
         db_path=Path(os.environ.get("ACB_DB", "agent_costbook.sqlite3")),
         admin_token=os.environ.get("ACB_ADMIN_TOKEN", ""),
+        read_token=os.environ.get("ACB_READ_TOKEN", ""),
     )
