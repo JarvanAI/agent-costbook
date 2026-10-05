@@ -329,8 +329,12 @@ def _emit(document: dict) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from agent_costbook import __version__
+    from agent_costbook.local import register_local, run_local
+
     parser = argparse.ArgumentParser(prog="ac")
-    commands = parser.add_subparsers(dest="command", required=True)
+    parser.add_argument("--version", action="store_true", help="print the package version and exit")
+    commands = parser.add_subparsers(dest="command")
     estimate = commands.add_parser("estimate")
     estimate.add_argument("--snapshot", required=True)
     estimate.add_argument("--request", required=True)
@@ -343,7 +347,16 @@ def main(argv: list[str] | None = None) -> int:
     collect.add_argument("--max-runtime", type=float)
     collect.add_argument("--now")
     register_data(commands)
+    register_local(commands)
     args = parser.parse_args(argv)
+    if args.version:
+        print(__version__)
+        return 0
+    if args.command is None:
+        parser.print_usage(sys.stderr)
+        return 2
+    if args.command in {"setup", "serve", "doctor", "demo", "version"}:
+        return run_local(args)
     if args.command == "collect":
         return _collect(args.db, args.now, args.max_runtime)
     if args.command == "data":

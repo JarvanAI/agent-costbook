@@ -1,6 +1,6 @@
 [project]
 name = "agent-costbook"
-version = "1.0.0"
+version = "1.1.0"
 description = "Traceable costs and capabilities for AI agents"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -28,6 +28,7 @@ agent-costbook-export = "agent_costbook.export:main"
 agent-costbook-backup = "agent_costbook.backup:main"
 agent-costbook-migrate = "agent_costbook.migrations:main"
 ac = "agent_costbook.offline:main"
+agent-costbook = "agent_costbook.offline:main"
 
 [build-system]
 requires = ["hatchling"]
