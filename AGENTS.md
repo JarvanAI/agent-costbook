@@ -9,6 +9,8 @@
 - [CONTRIBUTING.md](CONTRIBUTING.md)：代码与数据贡献流程
 - [docs/data-sources.md](docs/data-sources.md)：来源、新鲜度、第三方数据权利和私有资料边界
 - [docs/design/open-source-launch.md](docs/design/open-source-launch.md)：2026-10-02 已确认的开源定位与发布范围
+- [docs/design/developer-experience.md](docs/design/developer-experience.md)：2026-10-05 已确认的查询 Skill、安装与首次使用设计，含执行和验收清单
+- [docs/research/developer-experience-20261005.md](docs/research/developer-experience-20261005.md)：Cursor CLI Opus 5.5 独立审阅、外部一手资料补查与采纳记录
 - [docs/research/aa-data-acquisition.md](docs/research/aa-data-acquisition.md)：2026-09-27 读取 Artificial Analysis 公开 API、OpenAPI 和网页的步骤
 - [docs/research/aa-storage-findings.md](docs/research/aa-storage-findings.md)：这些读数与当前能力目录字段的差距
 - [docs/research/catalog-refresh-20261001.md](docs/research/catalog-refresh-20261001.md)：增量更新的方法、来源映射、精度和字段缺口；本轮原始证据及私有额度资料不公开
