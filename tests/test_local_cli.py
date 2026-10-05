@@ -184,6 +184,7 @@ def test_setup_repeat_keeps_original_config_bytes_and_database_rows(tmp_path):
     assert stored["server"] == "http://127.0.0.1:8080"
     assert Path(stored["db_path"]).is_absolute()
     assert stored["db_path"] == str(database.resolve())
+    assert stored["admin_token"] != stored["read_token"]
     assert stored["admin_token"] not in first.stdout + first.stderr
     assert stored["read_token"] not in first.stdout + first.stderr
     original = config.read_bytes()
@@ -210,6 +211,40 @@ def test_setup_config_permissions_are_private(tmp_path):
     assert _mode(database) == 0o600
     assert _mode(database.parent) == 0o700
     assert _mode(config) & 0o077 == 0
+
+
+def test_setup_preserves_existing_parent_directory_modes(tmp_path):
+    home = tmp_path / "home"
+    parent = home / "shared"
+    database_dir = home / "db-shared"
+    parent.mkdir(parents=True)
+    database_dir.mkdir()
+    os.chmod(parent, 0o775)
+    os.chmod(database_dir, 0o775)
+    config = parent / "ac.json"
+    database = database_dir / "costbook.sqlite3"
+    result = _run(home, ["setup", "--config", str(config), "--db", str(database)])
+    assert result.returncode == 0, result.stderr
+    assert _mode(parent) == 0o775
+    assert _mode(database_dir) == 0o775
+    assert _mode(config) == 0o600
+    assert _mode(database) == 0o600
+    assert _run(home, ["setup", "--config", str(config)]).returncode == 0
+    assert _mode(parent) == 0o775
+    assert _mode(database_dir) == 0o775
+
+    app = home / "xdg-config" / "agent-costbook"
+    data = home / "xdg-data" / "agent-costbook"
+    app.mkdir(parents=True)
+    data.mkdir(parents=True)
+    os.chmod(app, 0o755)
+    os.chmod(data, 0o755)
+    default = _run(home, ["setup"])
+    assert default.returncode == 0, default.stderr
+    assert _mode(app) == 0o755
+    assert _mode(data) == 0o755
+    assert _mode(app / "config.json") == 0o600
+    assert _mode(data / "costbook.sqlite3") == 0o600
 
 
 def test_setup_refuses_to_overwrite_bogus_config(tmp_path):
@@ -252,6 +287,73 @@ def test_setup_refuses_malformed_json_without_rewriting(tmp_path):
     assert not database.exists()
     assert SECRET_ADMIN not in result.stdout + result.stderr
     assert "Traceback" not in result.stdout + result.stderr
+
+
+def test_setup_rejects_invalid_config_shapes_without_traceback(tmp_path):
+    home = tmp_path / "home"
+    _, config, database = _paths(home)
+    config.parent.mkdir(parents=True)
+    database_path = str((home / "db.sqlite3").resolve())
+    same = {
+        "version": 1,
+        "db_path": database_path,
+        "admin_token": SECRET_ADMIN,
+        "read_token": SECRET_ADMIN,
+        "server": "http://127.0.0.1:8080",
+    }
+    shapes = [
+        b"\xff\xfe" + SECRET_ADMIN.encode(),
+        json.dumps({**same, "read_token": SECRET_READ, "server": 8080}).encode(),
+        json.dumps({**same, "read_token": SECRET_READ, "server": {"url": "http://127.0.0.1:8080"}}).encode(),
+        json.dumps(same).encode(),
+        json.dumps(["raw", SECRET_ADMIN]).encode(),
+    ]
+    for payload in shapes:
+        config.write_bytes(payload)
+        os.chmod(config, 0o644)
+        original = config.read_bytes()
+        result = _run(home, ["setup"])
+        combined = result.stdout + result.stderr
+        assert result.returncode == 3, combined
+        assert config.read_bytes() == original
+        assert _mode(config) == 0o644
+        assert not database.exists()
+        assert "Traceback" not in combined
+        assert SECRET_ADMIN not in combined
+        assert _json(result)["status"] == "config_invalid"
+
+
+def test_setup_io_and_store_errors_are_coded(tmp_path):
+    home = tmp_path / "home"
+    blocked = home / "not-a-directory"
+    blocked.parent.mkdir(parents=True)
+    blocked.write_text("keep")
+    blocked_mode = _mode(blocked)
+    result = _run(home, ["setup", "--config", str(blocked / "ac.json")])
+    combined = result.stdout + result.stderr
+    assert result.returncode != 0
+    assert "Traceback" not in combined
+    assert _json(result)["status"] == "io"
+    assert blocked.read_text() == "keep"
+    assert _mode(blocked) == blocked_mode
+
+    home_ready = tmp_path / "ready"
+    assert _run(home_ready, ["setup"]).returncode == 0
+    _, config, database = _paths(home_ready)
+    config_bytes = config.read_bytes()
+    database_bytes = database.read_bytes()
+    os.chmod(database, 0)
+    try:
+        failed = _run(home_ready, ["setup"])
+    finally:
+        os.chmod(database, 0o600)
+    failed_text = failed.stdout + failed.stderr
+    assert failed.returncode != 0
+    assert "Traceback" not in failed_text
+    assert _json(failed)["status"] in {"io", "db_invalid"}
+    assert config.read_bytes() == config_bytes
+    assert database.read_bytes() == database_bytes
+    assert json.loads(config_bytes)["admin_token"] not in failed_text
 
 
 def test_setup_db_override_does_not_rewrite_existing_config(tmp_path):
@@ -352,12 +454,28 @@ def test_demo_is_synthetic_and_does_not_touch_files_or_config(tmp_path):
     )
     assert result.returncode == 0, result.stderr
     body = _json(result)
+    from importlib.resources import files
+
+    from agent_costbook.models import EstimateIn
+    from agent_costbook.offline import estimate_snapshot, load_snapshot
+
+    package = files("agent_costbook.demo")
+    snapshot = package.joinpath("snapshot.json").read_bytes()
+    request = package.joinpath("request.json").read_bytes()
+    expected = estimate_snapshot(
+        load_snapshot(snapshot, expected_publisher="pub_sample"),
+        EstimateIn.model_validate_json(request),
+    )
+    expected["synthetic"] = True
     assert body["synthetic"] is True
-    assert body["currency"] == "USD"
     assert body["publisher_id"] == "pub_sample"
-    assert body["result"]["candidate_id"] == "synthetic-m4"
-    assert body["result"]["method"] == "M4"
-    assert body["result"]["metrics"]["cost"] == "0.0177"
+    assert body["content_sha256"] == expected["content_sha256"]
+    assert body["data_version"] == expected["data_version"]
+    assert body["formula_version"] == expected["formula_version"]
+    assert [item["candidate_id"] for item in body["results"]] == ["synthetic-m4"]
+    assert body["results"][0]["metrics"] == {"cost": "0.0177", "currency": "USD"}
+    assert "result" not in body
+    assert body == expected
     assert SECRET_ADMIN not in result.stdout + result.stderr
     after = {path.relative_to(home) for path in home.rglob("*")}
     assert after == before
@@ -680,6 +798,34 @@ def test_load_cli_config_precedence_and_secret_errors(tmp_path, monkeypatch):
     assert caught.value.code == "config_invalid"
     assert SECRET_ADMIN not in str(caught.value)
     assert SECRET_ADMIN not in caught.value.repair
+
+    invalid = home / "invalid-shapes"
+    invalid.mkdir()
+    database = (home / "shape.sqlite3").resolve()
+    base = {
+        "version": 1,
+        "db_path": str(database),
+        "admin_token": SECRET_ADMIN,
+        "read_token": SECRET_READ,
+        "server": "http://127.0.0.1:8080",
+    }
+    samples = {
+        "utf8": b"\xff" + SECRET_ADMIN.encode(),
+        "server-number": json.dumps({**base, "server": 8080}).encode(),
+        "server-object": json.dumps({**base, "server": {"url": "http://127.0.0.1:8080"}}).encode(),
+        "same-token": json.dumps({**base, "read_token": SECRET_ADMIN}).encode(),
+        "raw-list": json.dumps(["raw", SECRET_ADMIN]).encode(),
+    }
+    for name, payload in samples.items():
+        path = invalid / f"{name}.json"
+        path.write_bytes(payload)
+        with pytest.raises(LocalError) as caught:
+            load_cli_config(config_path=str(path))
+        assert caught.value.code == "config_invalid"
+        assert not isinstance(caught.value.__cause__, UnicodeDecodeError)
+        assert SECRET_ADMIN not in str(caught.value)
+        assert SECRET_ADMIN not in caught.value.repair
+        assert path.read_bytes() == payload
 
 
 def test_default_paths_follow_platform(tmp_path, monkeypatch):

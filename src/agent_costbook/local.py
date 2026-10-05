@@ -3,8 +3,8 @@
 Query and online estimate commands should keep using this module instead of
 reading environment variables or the config file themselves.
 
-Helper contract for the query worker
---------------------------------------
+Helper contract for query commands
+-----------------------------------
 ``load_cli_config(config_path=None, db=None)`` resolves one :class:`CliConfig`
 and does not create or rewrite files.
 
@@ -20,24 +20,25 @@ and does not create or rewrite files.
 * ``query_credential(config)`` returns the read token when it is non-empty,
   otherwise the admin token. Never log either value.
 * :func:`service_settings` builds ``Settings(db_path, admin_token, read_token)``
-  for ``serve``. ``read_token`` is passed when ``Settings`` accepts it (the
-  settings worker is adding that field, default ``""``). ``load_settings()``
-  stays cwd-based and is not used here.
+  for ``serve``. ``load_settings()`` stays cwd-based and is not used here.
 
 A config file is JSON object version ``1`` with absolute ``db_path``,
-``admin_token``, ``read_token``, and loopback ``server`` (created as
-``http://127.0.0.1:8080``). Malformed JSON and any other version raise
-:class:`LocalError` with code ``config_invalid``. The repair text does not
-include file contents or tokens.
+distinct ``admin_token`` and ``read_token``, and loopback ``server`` (created
+as ``http://127.0.0.1:8080``). Malformed JSON, invalid text, a non-string
+server, equal tokens, and any other version raise :class:`LocalError` with
+code ``config_invalid``. The repair text does not include file contents or tokens.
 
-Exit codes: 2 config missing, 3 config invalid, 4 database missing,
-5 database invalid, 6 transport, 7 auth, 8 port conflict, 9 database mismatch.
+Setup creates only missing directories and marks those new directories ``0700``.
+An existing parent keeps its mode. The config file and database file are ``0600``.
+
+Exit codes: 1 input/output, 2 config missing, 3 config invalid, 4 database
+missing, 5 database invalid, 6 transport, 7 auth, 8 port conflict,
+9 database mismatch.
 """
 
 from __future__ import annotations
 
 import argparse
-import inspect
 import json
 import os
 import secrets
@@ -57,6 +58,11 @@ DEFAULT_SERVER = "http://127.0.0.1:8080"
 _CONFIG_KEYS = frozenset({"version", "db_path", "admin_token", "read_token", "server"})
 _LOOPBACK_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 _HTTP_TIMEOUT = 3.0
+_IO_REPAIR = (
+    "Setup could not create or open a path. Existing files were left unchanged. "
+    "Check that each parent is a writable directory."
+)
+EXIT_IO = 1
 EXIT_CONFIG_MISSING = 2
 EXIT_CONFIG_INVALID = 3
 EXIT_DB_MISSING = 4
@@ -126,10 +132,11 @@ def query_credential(config: CliConfig) -> str:
 def service_settings(config: CliConfig) -> Settings:
     """Settings for this process. Does not call the cwd-based factory."""
 
-    kwargs = {"db_path": config.db_path, "admin_token": config.admin_token}
-    if "read_token" in inspect.signature(Settings).parameters:
-        kwargs["read_token"] = config.read_token
-    return Settings(**kwargs)
+    return Settings(
+        db_path=config.db_path,
+        admin_token=config.admin_token,
+        read_token=config.read_token,
+    )
 
 
 def load_cli_config(config_path: str | None = None, db: str | None = None) -> CliConfig:
@@ -211,11 +218,13 @@ def run_setup(args: argparse.Namespace) -> int:
     except StoreError as exc:
         return _fail(
             "db_invalid",
-            "The database could not be opened. Setup did not replace an existing config.",
+            "The database could not be opened. Setup did not replace an existing config or database.",
             EXIT_DB_INVALID,
             problem_code=exc.code,
             config=str(preview.path),
         )
+    except Exception:
+        return _io_failure(config=str(preview.path))
 
 
 def run_serve(args: argparse.Namespace) -> int:
@@ -390,21 +399,10 @@ def run_demo() -> int:
 
     package = resources.files("agent_costbook.demo")
     document = load_snapshot(package.joinpath("snapshot.json").read_bytes(), expected_publisher="pub_sample")
-    request_bytes = package.joinpath("request.json").read_bytes()
-    body = EstimateIn.model_validate_json(request_bytes)
+    body = EstimateIn.model_validate_json(package.joinpath("request.json").read_bytes())
     payload = estimate_snapshot(document, body)
-    row = next(item for item in payload["results"] if item.get("candidate_id") == "synthetic-m4")
-    _emit(
-        {
-            "synthetic": True,
-            "publisher_id": payload["publisher_id"],
-            "data_version": payload["data_version"],
-            "snapshot_id": payload["snapshot_id"],
-            "formula_version": payload["formula_version"],
-            "currency": body.currency,
-            "result": row,
-        }
-    )
+    payload["synthetic"] = True
+    _emit(payload)
     return 0
 
 
@@ -458,9 +456,15 @@ def _parse_config_file(path: Path) -> dict:
     except OSError:
         raise _invalid_config(path) from None
     try:
-        document = json.loads(raw)
-    except json.JSONDecodeError:
+        return _config_document(path, raw)
+    except LocalError:
+        raise
+    except Exception:
         raise _invalid_config(path) from None
+
+
+def _config_document(path: Path, raw: bytes) -> dict:
+    document = json.loads(raw.decode("utf-8"))
     if not isinstance(document, dict) or set(document) != _CONFIG_KEYS:
         raise _invalid_config(path)
     version = document.get("version")
@@ -469,15 +473,26 @@ def _parse_config_file(path: Path) -> dict:
     db_path = document.get("db_path")
     if not isinstance(db_path, str) or not Path(db_path).is_absolute():
         raise _invalid_config(path)
-    for field in ("admin_token", "read_token"):
-        value = document.get(field)
+    admin_token = document.get("admin_token")
+    read_token = document.get("read_token")
+    for value in (admin_token, read_token):
         if not isinstance(value, str) or not value or len(value) > 512:
             raise _invalid_config(path)
         if any(ord(character) < 32 for character in value):
             raise _invalid_config(path)
+    if admin_token == read_token:
+        raise LocalError(
+            "config_invalid",
+            f"Config at {path} is invalid. The admin and read tokens must be different. "
+            "Repair or remove the file manually; ac setup will not overwrite it.",
+            exit_code=EXIT_CONFIG_INVALID,
+        )
+    server = document.get("server")
+    if not isinstance(server, str):
+        raise _invalid_config(path)
     try:
-        document["server"] = normalize_server(document["server"])
-    except (DataError, TypeError):
+        document["server"] = normalize_server(server)
+    except DataError:
         raise _invalid_config(path) from None
     return document
 
@@ -505,7 +520,7 @@ def _db_mismatch(config: CliConfig) -> int:
 
 def _setup_locked(preview: CliConfig) -> int:
     if not preview.exists:
-        _private_dir(preview.path.parent)
+        _ensure_private_dir(preview.path.parent)
     with _SetupLock(preview.path.with_name(f".{preview.path.name}.lock")):
         if preview.path.is_file():
             document = _parse_config_file(preview.path)
@@ -519,7 +534,7 @@ def _setup_locked(preview: CliConfig) -> int:
         elif preview.path.exists():
             raise _invalid_config(preview.path)
         else:
-            _private_dir(preview.path.parent)
+            _ensure_private_dir(preview.path.parent)
             db_path = preview.db_path
             document = _new_document(db_path)
             _publish(preview.path, document)
@@ -528,16 +543,19 @@ def _setup_locked(preview: CliConfig) -> int:
             credentials = _credential_flags(document)
         coverage = _open_database(db_path)
         _private_file(preview.path)
-        _private_dir(preview.path.parent)
     return _success(preview.path, db_path, server, coverage, credentials, created)
 
 
 def _new_document(db_path: Path) -> dict:
+    admin_token = secrets.token_urlsafe(32)
+    read_token = secrets.token_urlsafe(32)
+    while read_token == admin_token:
+        read_token = secrets.token_urlsafe(32)
     return {
         "version": 1,
         "db_path": str(db_path),
-        "admin_token": secrets.token_urlsafe(32),
-        "read_token": secrets.token_urlsafe(32),
+        "admin_token": admin_token,
+        "read_token": read_token,
         "server": DEFAULT_SERVER,
     }
 
@@ -577,17 +595,25 @@ def _publish(path: Path, document: dict) -> None:
 
 
 def _open_database(db_path: Path) -> dict:
-    _private_dir(db_path.parent)
-    store = Store(db_path)
+    _ensure_private_dir(db_path.parent)
+    try:
+        store = Store(db_path)
+    except StoreError:
+        raise
+    except Exception:
+        raise LocalError("io", _IO_REPAIR, exit_code=EXIT_IO) from None
     try:
         coverage = _coverage(store)
     finally:
         store.close()
-    _private_file(db_path)
-    for suffix in ("-wal", "-shm"):
-        sidecar = db_path.with_name(db_path.name + suffix)
-        if sidecar.exists():
-            _private_file(sidecar)
+    try:
+        _private_file(db_path)
+        for suffix in ("-wal", "-shm"):
+            sidecar = db_path.with_name(db_path.name + suffix)
+            if sidecar.is_file():
+                _private_file(sidecar)
+    except OSError:
+        raise LocalError("io", _IO_REPAIR, exit_code=EXIT_IO) from None
     return coverage
 
 
@@ -810,13 +836,36 @@ def _bytes(document: dict) -> bytes:
     )
 
 
-def _private_dir(path: Path) -> None:
-    path.mkdir(parents=True, exist_ok=True)
-    os.chmod(path, 0o700)
+def _ensure_private_dir(path: Path) -> None:
+    """Create missing directories as ``0700``. Leave an existing directory unchanged."""
+
+    if path.is_dir():
+        return
+    if path.exists():
+        raise LocalError("io", _IO_REPAIR, exit_code=EXIT_IO)
+    parent = path.parent
+    if parent != path:
+        _ensure_private_dir(parent)
+    try:
+        path.mkdir(mode=0o700)
+    except FileExistsError:
+        if path.is_dir():
+            return
+        raise LocalError("io", _IO_REPAIR, exit_code=EXIT_IO) from None
+    except OSError:
+        raise LocalError("io", _IO_REPAIR, exit_code=EXIT_IO) from None
+    try:
+        os.chmod(path, 0o700)
+    except OSError:
+        raise LocalError("io", _IO_REPAIR, exit_code=EXIT_IO) from None
 
 
 def _private_file(path: Path) -> None:
     os.chmod(path, 0o600)
+
+
+def _io_failure(**extra) -> int:
+    return _fail("io", _IO_REPAIR, EXIT_IO, **extra)
 
 
 def _fsync_dir(path: Path) -> None:
