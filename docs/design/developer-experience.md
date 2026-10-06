@@ -1,12 +1,12 @@
 # 安装、查询与首次使用设计
 
-日期：2026-10-05。状态：维护者已确认推荐方案，执行中。下文新增命令是执行合同，完成验收前不视为可用；当前可用命令以 [运行参考](../reference.md) 为准。
+日期：2026-10-05。状态：实现与本地验收通过，发布回执待核实。当前命令见 [运行参考](../reference.md)，实际检查见 [验证记录](../research/developer-experience-validation-20261006.md)。
 
 目标是让新用户不必克隆源码或寻找测试文件就能完成一次估算，让外部 Agent 查询带来源、时间和版本的价格与能力事实。ac 提供事实和估算，ar 或其他调用者做 Agent/model/effort 选择。
 
 独立审阅使用 Cursor CLI 的 `claude-opus-5-5-high`，外部资料由协调 Agent 补查；完整输出、采纳与调整见 [调研记录](../research/developer-experience-20261005.md)。
 
-## 当前阻力
+## 修改前的阻力
 
 - `ac` 入口在 `offline.py`，只有 `estimate`、`collect` 和 `data`。服务启动需要手写 uvicorn factory 命令。
 - 当前演示快照在 `tests/fixtures/`，请求在 `examples/`；wheel 没有完整的可直接执行演示资源。
@@ -127,7 +127,7 @@ P1：决定后配置 PyPI Trusted Publishing 与正式版本安装；制作短�
 
 ## 实施顺序
 
-建立独立 Orca worktree `ac-dx-1.1`。本轮在这一份文档补充执行步骤和仓库原生验证，不另外拆三份短文档。Cursor Opus 5.5 的任务是本轮独立方案审阅；维护者随后指定：稍复杂实现使用 Grok 4.7 High，简单文档和 Skill 任务使用 agy Gemini 3.8 Flash High。入口文件由一名实现者负责，避免并行修改冲突。
+建立独立 worktree `ac-dx-1.1`（分支 `feature/ac-dx-1.1`）。创建时已选 Orca Runtime 不可用，因此先用 Git 建立隔离 checkout；Runtime 恢复后，Orca 已发现该 worktree，显示名设为 `ac-dx-1.1`，关联本仓主 worktree，Kanban 状态为 `in-progress`。本轮在这一份文档补充执行步骤和仓库原生验证，不另外拆三份短文档。Cursor Opus 5.5 的任务是本轮独立方案审阅；维护者随后指定：稍复杂实现使用 Grok 4.7 High，简单文档和 Skill 任务使用 agy Gemini 3.8 Flash High。入口文件由一名实现者负责，避免并行修改冲突。
 
 ```mermaid
 flowchart TD
@@ -161,34 +161,39 @@ flowchart TD
 
 ### 1. 配置、独立演示和服务入口（Grok 4.7 High）
 
-- [ ] 在 `tests/test_local_cli.py` 写 setup 幂等、demo 脱离源码、缺少配置/端口占用/doctor 不写库等行为测试，并运行确认失败。
-- [ ] 新增 `src/agent_costbook/local.py`，复用 Settings/Store 和 uvicorn；配置用 JSON 与标准库平台目录规则。`ACB_CONFIG` 或 `--config` 选配置文件，`--db` / `ACB_DB` 优先于配置；旧 factory 的 cwd 默认不变。
-- [ ] 包内新增 `src/agent_costbook/demo/` 合成资源，使用 importlib.resources，不复制真实运行数据。setup 配置保存本地 admin/read token，POSIX 文件 0600/目录 0700；输出只有路径与是否已设置，不打印 token。
-- [ ] `offline.py` 注册 setup/serve/doctor/demo/version；serve 默认 loopback、前台，显式 `--setup` 可创建配置与空库。服务/查询默认端口 8080，可指定端口；不自动选新端口而让调用者连接到错误实例。
-- [ ] 对外命令增加 `agent-costbook` 别名，既有入口保留。
-- [ ] 运行 `uv run pytest -q tests/test_local_cli.py`，记录通过与实际限制。
+- [x] 在 `tests/test_local_cli.py` 写 setup 幂等、demo 脱离源码、缺少配置/端口占用/doctor 不写库等行为测试，并运行确认失败。
+- [x] 新增 `src/agent_costbook/local.py`，复用 Settings/Store 和 uvicorn；配置用 JSON 与标准库平台目录规则。`ACB_CONFIG` 或 `--config` 选配置文件，`--db` / `ACB_DB` 优先于配置；旧 factory 的 cwd 默认不变。
+- [x] 包内新增 `src/agent_costbook/demo/` 合成资源，使用 importlib.resources，不复制真实运行数据。setup 配置保存本地 admin/read token，POSIX 文件 0600/目录 0700；输出只有路径与是否已设置，不打印 token。
+- [x] `offline.py` 注册 setup/serve/doctor/demo/version；serve 默认 loopback、前台，显式 `--setup` 可创建配置与空库。服务/查询默认端口 8080，可指定端口；不自动选新端口而让调用者连接到错误实例。
+- [x] 对外命令增加 `agent-costbook` 别名，既有入口保留。
+- [x] 运行 `uv run pytest -q tests/test_local_cli.py`，记录通过与实际限制。
 
 ### 2. 消费查询和只读能力（Grok 4.7 High）
 
-- [ ] 在 `tests/test_query_cli.py`、`tests/test_read_auth.py` 写临时 HTTP 服务测试：过滤、缺失、错误身份、只读不能写/M7、旧 admin 可用，先运行观察失败。
-- [ ] Settings 增加可选 `read_token`（默认空），环境变量 `ACB_READ_TOKEN`。能力 GET/估算能力附加信息允许 read 或 admin，M7 和写操作只允许 admin。既有 public 价格行为不变。
-- [ ] 新增 `src/agent_costbook/query.py`，复用现有 HTTP 传输，提供 prices/agents/model-efforts/evidence/research，默认 JSON、显式表格；数据字段保留 null、来源、时间、版本。model-efforts 不给 effort 表示列档，显式空 effort 查 null 档。
-- [ ] estimate 新增 `--server` 在线模式，与 `--snapshot` 互斥，复用 EstimateIn 与 HTTP 合同；不替消费者排名或派遣。
-- [ ] CLI 消费凭据优先 `ACB_READ_TOKEN` / 配置 read token，必要时兼容 admin；不得把 token 放在 CLI 参数或输出。配置不存在但显式环境和 server 已够时不要求先 setup。
-- [ ] 运行上述测试及 `tests/test_capabilities.py tests/test_ar_contract.py`，验证现有行为。
+- [x] 在 `tests/test_query_cli.py`、`tests/test_read_auth.py` 写临时 HTTP 服务测试：过滤、缺失、错误身份、只读不能写/M7、旧 admin 可用，先运行观察失败。
+- [x] Settings 增加可选 `read_token`（默认空），环境变量 `ACB_READ_TOKEN`。能力 GET/估算能力附加信息允许 read 或 admin，M7 和写操作只允许 admin。既有 public 价格行为不变。
+- [x] 新增 `src/agent_costbook/query.py`，复用现有 HTTP 传输，提供 prices/agents/model-efforts/evidence/research，默认 JSON、显式表格；数据字段保留 null、来源、时间、版本。model-efforts 不给 effort 表示列档，显式空 effort 查 null 档。
+- [x] estimate 新增 `--server` 在线模式，与 `--snapshot` 互斥，复用 EstimateIn 与 HTTP 合同；不替消费者排名或派遣。
+- [x] CLI 消费凭据优先 `ACB_READ_TOKEN` / 配置 read token，必要时兼容 admin；不得把 token 放在 CLI 参数或输出。配置不存在但显式环境和 server 已够时不要求先 setup。
+- [x] 运行上述测试及 `tests/test_capabilities.py tests/test_ar_contract.py`，验证现有行为。
 
 ### 3. 安装体验、查询 Skill 与文档（agy Gemini 3.8 Flash High）
 
-- [ ] 创建自包含 `skills/costbook-query/SKILL.md` 与确有必要的参考；只查询事实和估算，识别 synthetic、空库、新鲜度与缺失，不自动写入。
-- [ ] 编写 getting-started、Agent 集成和目录维护指南；英中 README 首屏一致，复制粘贴示例与实际 CLI 一致。尚未创建的 tag/PyPI 包必须标待发布或使用实际 Git ref。
-- [ ] 更新 AGENTS 文档索引，Skill 复制后不依赖 checkout 文档相对路径。
-- [ ] 新增首用失败/数据纠正 issue 模板、简短源码发布说明和可复用终端示例；外部社区推广不自动发布。
-- [ ] 配置 GitHub release 和 PyPI Trusted Publishing 工作流：tag 发布、构建/测试、发布环境绑定；不存发布 token。只有真实权限和发布回执证实后才将 PyPI 标为已发布。
+- [x] 创建自包含 `skills/costbook-query/SKILL.md` 与确有必要的参考；只查询事实和估算，识别 synthetic、空库、新鲜度与缺失，不自动写入。
+- [x] 编写 getting-started、Agent 集成和目录维护指南；英中 README 首屏一致，复制粘贴示例与实际 CLI 一致。尚未创建的 tag/PyPI 包必须标待发布或使用实际 Git ref。
+- [x] 更新 AGENTS 文档索引，Skill 复制后不依赖 checkout 文档相对路径。
+- [x] 新增首用失败/数据纠正 issue 模板、简短源码发布说明和可复用终端示例；外部社区推广不自动发布。
+- [x] 配置 GitHub release 和 PyPI Trusted Publishing 工作流：tag 发布、构建/测试、发布环境绑定；不存发布 token。只有真实权限和发布回执证实后才将 PyPI 标为已发布。
 
 ### 4. 联合验收和发布
 
-- [ ] 扩展 `tests/test_install_smoke.py` 从最终 wheel 装入干净环境，源码目录外运行 demo/setup/serve/doctor/query/estimate。
-- [ ] 运行 `uv run pytest -q`、`uv build`、文档链接及 demo 检查；检查打包资源和私有目录排除。
-- [ ] 独立按合同复核，再审查复杂度与权限；发现问题交原执行 Agent 修正。
-- [ ] 三个 Skill 标准发现验证；用独立 Agent 加载查询 Skill 对临时合成服务完成实际查询，保存结果。
-- [ ] 合并已验证改动、提交 push，核实 GitHub CI 与 release；若 PyPI 缺权限，保留已准备状态并提供精确的配置步骤，不伪称发布成功。
+- [x] 扩展 `tests/test_install_smoke.py` 从最终 wheel 装入干净环境，源码目录外运行 demo/setup/serve/doctor/query/estimate。
+- [x] 运行 `uv run pytest -q`、`uv build`、文档链接及 demo 检查；检查打包资源和私有目录排除。
+- [x] 独立按合同复核，再审查复杂度与权限；发现问题交原执行 Agent 修正。
+- [x] 三个 Skill 标准发现验证；用独立 Agent 加载查询 Skill 对临时合成服务完成实际查询，保存结果。
+- [ ] 合并已验证改动、提交 push，核实 GitHub CI 与 release。
+- [x] 准备 PyPI workflow/environment 与精确的 Trusted Publisher 配置说明；维护者账号设置尚未就绪，未执行 PyPI 发布。
+
+## 本地验收结果
+
+2026-10-06：223 项测试通过；安装包在源码目录外完成使用路径；独立 agy 消费者执行复制出来的查询 Skill，临时数据库及 WAL/SHM 哈希未变。标准安装器发现三个 Skill，各 Skill 校验通过；合成 demo 和文档批次命令通过。发行与账号状态另见[版本说明](../releases/developer-experience-1.1.md)。

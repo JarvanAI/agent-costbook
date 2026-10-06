@@ -1,0 +1,52 @@
+name: Data correction or update
+description: Propose a correction for outdated, inaccurate, or missing pricing/capability facts
+title: "[Data]: Correction for "
+labels: ["data", "catalog"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template to suggest factual updates to model pricing, capability records, or benchmarks.
+        
+        **Data privacy**: Submit only publicly accessible, unencumbered information. Do NOT submit private employer pricing, confidential rate agreements, internal tokens, or personal account snapshots.
+  - type: input
+    id: target
+    attributes:
+      label: Target model or record
+      description: Provider, channel, model name, and optional effort tier
+      placeholder: "openai / openrouter / openai/gpt-4o-mini (effort: default)"
+    validations:
+      required: true
+  - type: textarea
+    id: comparison
+    attributes:
+      label: Current value vs. Proposed correct value
+      description: What is currently recorded in agent-costbook, and what should it be?
+      placeholder: |
+        Current uncached input: $0.150 / 1M tokens
+        Proposed uncached input: $0.125 / 1M tokens
+    validations:
+      required: true
+  - type: input
+    id: source_url
+    attributes:
+      label: Public source URL or citation
+      description: Link to official provider pricing page, benchmark publication, or documentation
+      placeholder: "https://openai.com/pricing"
+    validations:
+      required: true
+  - type: input
+    id: retrieved_at
+    attributes:
+      label: Retrieval timestamp (UTC)
+      description: When was this source retrieved or observed?
+      placeholder: "2026-10-05T00:00:00Z"
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Additional context or notes
+      description: Relevant details regarding scope, discounts, billing tiers, or conditions
+    validations:
+      required: false

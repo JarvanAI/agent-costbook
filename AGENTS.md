@@ -5,12 +5,18 @@
 ## 文档
 
 - [README.md](README.md) / [README.zh-CN.md](README.zh-CN.md)：定位、ac/ar 关系、上手示例与支持范围
+- [docs/getting-started.md](docs/getting-started.md)：快速上手、单命令服务与诊断、基础查询与估算
+- [docs/guides/agent-integration.md](docs/guides/agent-integration.md)：外部 Agent、Router 与框架接入规范与约定
+- [docs/guides/catalog-maintenance.md](docs/guides/catalog-maintenance.md)：真实价格与能力目录的批次更新、审核与备份指南
 - [docs/reference.md](docs/reference.md)：运行、HTTP、公式、能力目录和备份参考
+- [docs/releases/developer-experience-1.1.md](docs/releases/developer-experience-1.1.md)：1.1.0 开发者体验版本发布说明（待发布）
+- [docs/releases/source-launch-20261002.md](docs/releases/source-launch-20261002.md)：2026-10-02 开源发布说明
 - [CONTRIBUTING.md](CONTRIBUTING.md)：代码与数据贡献流程
 - [docs/data-sources.md](docs/data-sources.md)：来源、新鲜度、第三方数据权利和私有资料边界
 - [docs/design/open-source-launch.md](docs/design/open-source-launch.md)：2026-10-02 已确认的开源定位与发布范围
-- [docs/design/developer-experience.md](docs/design/developer-experience.md)：2026-10-05 已确认的查询 Skill、安装与首次使用设计，含执行和验收清单
-- [docs/research/developer-experience-20261005.md](docs/research/developer-experience-20261005.md)：Cursor CLI Opus 5.5 独立审阅、外部一手资料补查与采纳记录
+- [docs/design/developer-experience.md](docs/design/developer-experience.md)：2026-10-05 查询 Skill、安装与首次使用设计，已实现并验证完成，发布待发布（release pending），含执行和验收清单
+- [docs/research/developer-experience-validation-20261006.md](docs/research/developer-experience-validation-20261006.md)：安装包、223 项测试、独立查询 Agent 与只读完整性验收
+- [docs/research/developer-experience-20261005.md](docs/research/developer-experience-20261005.md)：Cursor CLI Opus 5.5 独立审阅、外部一手资料补查与采纳记录（保留历史底稿，已在上方设计确认执行）
 - [docs/research/aa-data-acquisition.md](docs/research/aa-data-acquisition.md)：2026-09-27 读取 Artificial Analysis 公开 API、OpenAPI 和网页的步骤
 - [docs/research/aa-storage-findings.md](docs/research/aa-storage-findings.md)：这些读数与当前能力目录字段的差距
 - [docs/research/catalog-refresh-20261001.md](docs/research/catalog-refresh-20261001.md)：增量更新的方法、来源映射、精度和字段缺口；本轮原始证据及私有额度资料不公开
@@ -29,6 +35,7 @@
 - 能力分是非负十进制字符串。空 effort 保存为 null，查询空档就命中这条记录。
 - 一条 Coding Agent 组合分同时带有 harness、模型和设置。当前目录不能完整保存它，不要当作同一模型的 Intelligence Index 写入；扩展方案见上方提案。
 - `default_for_agents` 表示推荐档，不表示测分时使用的 harness。
+- `skills/costbook-query/` 是只读消费 Skill，其依赖自包含，不引用源码 checkout 的相对文档路径。
 
 ## 目录
 
@@ -36,5 +43,6 @@
 - `tests/`：测试
 - `examples/`：估算请求样例
 - `docs/research/`：上面的研究笔记
-- `skills/costbook-contribute/`：贡献说明
-- `skills/costbook-initialize/`：价格与能力目录的初始化/更新编排
+- `skills/costbook-query/`：只读查询与估算消费 Skill（供 Agent 消费）
+- `skills/costbook-contribute/`：贡献说明（字段形状与单次提交）
+- `skills/costbook-initialize/`：价格与能力目录的初始化/更新编排（批次维护）

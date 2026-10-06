@@ -1,0 +1,116 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      publish_pypi:
+        description: 'Publish package distributions to PyPI via Trusted Publishing'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify build and test suite
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@v10.2.0
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Check git tag matches package version
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          TAG_VER="${GITHUB_REF_NAME#v}"
+          PKG_VER=$(uv run --locked python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+          if [ "$TAG_VER" != "$PKG_VER" ]; then
+            echo "::error::Tag version '$TAG_VER' does not match pyproject.toml version '$PKG_VER'"
+            exit 1
+          fi
+          echo "Verified tag version '$TAG_VER' matches package version '$PKG_VER'"
+
+      - name: Run test suite
+        run: uv run --locked pytest -q
+
+      - name: Verify documentation links
+        run: uv run --locked python scripts/check-docs.py
+
+      - name: Verify synthetic demo
+        run: uv run --locked python scripts/check-demo.py
+
+      - name: Build distributions
+        run: uv build
+
+      - name: Upload distribution packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+          if-no-files-found: error
+
+  github-release:
+    name: Create GitHub Release
+    needs: verify
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref_type == 'tag'
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+
+      - name: Download distribution packages
+        uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "agent-costbook $GITHUB_REF_NAME" \
+            --notes-file docs/releases/developer-experience-1.1.md \
+            --verify-tag
+
+  pypi-publish:
+    name: Publish to PyPI
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    if: github.event_name == 'workflow_dispatch' && inputs.publish_pypi == true
+    steps:
+      - name: Verify release ref is a git tag
+        run: |
+          if [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "::error::PyPI publication is only allowed when triggered on a git tag ref (e.g. refs/tags/v*). Current ref is '$GITHUB_REF' ($GITHUB_REF_TYPE). Aborting publication."
+            exit 1
+          fi
+
+      - name: Download distribution packages
+        uses: actions/download-artifact@v4
+        with:
+          name: distributions
+          path: dist/
+
+      - name: Publish distribution packages to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

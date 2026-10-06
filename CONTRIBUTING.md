@@ -5,6 +5,15 @@ Use [GitHub issues](https://github.com/JarvanAI/agent-costbook/issues) for quest
 and proposals, and pull requests for changes. The project is maintained through
 the JarvanAI repository. Vulnerability reports follow [SECURITY.md](SECURITY.md).
 
+## Issue templates
+
+When reporting problems or proposing corrections, use the structured issue templates:
+- **First-run failure**: For setup, demo, CLI execution, or installation errors.
+- **Data correction**: For updating outdated or incorrect pricing, capability facts, or benchmarks with public sources.
+
+> [!CAUTION]
+> Never include authentication tokens (`ACB_ADMIN_TOKEN`, `ACB_READ_TOKEN`), account credentials, or private subscription screenshots in public issues or pull requests.
+
 ## Develop and verify
 
 Python 3.12+ and [uv](https://docs.astral.sh/uv/) are required.
@@ -48,6 +57,7 @@ Public research methods belong in `docs/research/` and should be linked from
 [AGENTS.md](AGENTS.md) when useful for later Agents.
 
 To update your own running instance, follow the
+[catalog maintenance guide](docs/guides/catalog-maintenance.md) and
 [initialization Skill](skills/costbook-initialize/SKILL.md). The
 [contribution Skill](skills/costbook-contribute/SKILL.md) defines field shapes.
 The existing sequence is `plan → validate → diff → review → backup → apply → verify`.

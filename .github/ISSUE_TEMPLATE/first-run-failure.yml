@@ -1,0 +1,58 @@
+name: First-run or setup failure
+description: Report an issue during installation, demo, setup, or first query
+title: "[First-run]: "
+labels: ["bug", "dx"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting an issue! Please provide the details below so we can reproduce and fix it.
+        
+        **Security warning**: Never include authentication tokens (`ACB_ADMIN_TOKEN`, `ACB_READ_TOKEN`), API keys, passwords, or private subscription data in your report.
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: Operating system and tool versions
+      placeholder: "Linux (Ubuntu 22.04), Python 3.12.3, uv 0.4.x, ac 1.1.0"
+    validations:
+      required: true
+  - type: dropdown
+    id: command
+    attributes:
+      label: Command executed
+      description: Which command triggered the failure?
+      options:
+        - "ac demo"
+        - "ac setup"
+        - "ac serve / ac serve --setup"
+        - "ac doctor"
+        - "ac query (prices, agents, model-efforts, evidence, research)"
+        - "ac estimate"
+        - "uv tool install / installation issue"
+        - "Other"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and error output
+      description: Full error message, traceback, or unexpected output (ensure any secrets are redacted)
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: doctor_output
+    attributes:
+      label: Output of `ac doctor` (optional)
+      description: If applicable, paste the JSON output from `ac doctor`
+      render: json
+    validations:
+      required: false
