@@ -21,7 +21,7 @@ uv tool install git+https://github.com/JarvanAI/agent-costbook.git@v1.1.0
 ```
 
 > [!NOTE]
-> Git 安装方式已固定至验证过的发布标签 `@v1.1.0`。PyPI 分发处于待发布状态；在根 Agent 更新发布凭据前，请勿使用 `uv tool install agent-costbook`。
+> Git 安装方式已固定至验证过的发布标签 `@v1.1.0`。PyPI 待发布；当前使用上述 Git 安装命令。
 
 安装后同时提供短命令 `ac` 与长命令别名 `agent-costbook`：
 
@@ -204,7 +204,7 @@ flowchart TD
 - [数据来源与权利](docs/data-sources.md)：新鲜度、来源与公开/私有数据边界。
 - [贡献指南](CONTRIBUTING.md)：代码修改与数据纠正流程。
 - [安全政策](SECURITY.md)：本地运行与漏洞报告。
-- [1.1.0 开发者体验发布说明](docs/releases/developer-experience-1.1.md)：1.1.0 已验证源码发布候选说明（GitHub 标签与 PyPI 待发布）。
+- [1.1.0 开发者体验发布说明](docs/releases/developer-experience-1.1.md)：1.1.0 GitHub 已发布；PyPI 待配置。
 - [源码发布说明](docs/releases/source-launch-20261002.md)：初始开源发布范围与验证记录。
 
 ---

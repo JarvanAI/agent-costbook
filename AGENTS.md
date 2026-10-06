@@ -14,7 +14,7 @@
 - [CONTRIBUTING.md](CONTRIBUTING.md)：代码与数据贡献流程
 - [docs/data-sources.md](docs/data-sources.md)：来源、新鲜度、第三方数据权利和私有资料边界
 - [docs/design/open-source-launch.md](docs/design/open-source-launch.md)：2026-10-02 已确认的开源定位与发布范围
-- [docs/design/developer-experience.md](docs/design/developer-experience.md)：2026-10-05 查询 Skill、安装与首次使用设计，已实现并验证完成，发布待发布（release pending），含执行和验收清单
+- [docs/design/developer-experience.md](docs/design/developer-experience.md)：2026-10-05 查询 Skill、安装与首次使用设计，已实现并验证，GitHub v1.1.0 已发布；PyPI 待配置，含执行和验收清单
 - [docs/research/developer-experience-validation-20261006.md](docs/research/developer-experience-validation-20261006.md)：安装包、223 项测试、独立查询 Agent 与只读完整性验收
 - [docs/research/developer-experience-20261005.md](docs/research/developer-experience-20261005.md)：Cursor CLI Opus 5.5 独立审阅、外部一手资料补查与采纳记录（保留历史底稿，已在上方设计确认执行）
 - [docs/research/aa-data-acquisition.md](docs/research/aa-data-acquisition.md)：2026-09-27 读取 Artificial Analysis 公开 API、OpenAPI 和网页的步骤

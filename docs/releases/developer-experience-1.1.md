@@ -87,7 +87,7 @@ The source tree has been verified:
 
 ## Release preparation & PyPI Trusted Publishing
 
-The package is prepared as a validated source release candidate and remains in **Pending release (待发布)** status until official publication. Pinned Git installation is available:
+GitHub source release and its wheel/sdist are published. PyPI is a separate channel and remains pending. Pinned Git installation is available:
 ```sh
 uv tool install git+https://github.com/JarvanAI/agent-costbook.git@v1.1.0
 ```

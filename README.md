@@ -204,7 +204,7 @@ flowchart TD
 - [Data sources and rights](docs/data-sources.md): freshness, provenance, and public versus private data.
 - [Contributing](CONTRIBUTING.md): code changes and data corrections.
 - [Security](SECURITY.md): local operation and vulnerability reports.
-- [Developer experience 1.1.0 notes](docs/releases/developer-experience-1.1.md): v1.1.0 validated source release candidate (GitHub tag and PyPI pending).
+- [Developer experience 1.1.0 notes](docs/releases/developer-experience-1.1.md): v1.1.0 GitHub release notes; PyPI pending.
 - [Source launch notes](docs/releases/source-launch-20261002.md): initial open source publication scope.
 
 ---
