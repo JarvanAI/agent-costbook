@@ -9,7 +9,7 @@
 - [docs/guides/agent-integration.md](docs/guides/agent-integration.md)：外部 Agent、Router 与框架接入规范与约定
 - [docs/guides/catalog-maintenance.md](docs/guides/catalog-maintenance.md)：真实价格与能力目录的批次更新、审核与备份指南
 - [docs/reference.md](docs/reference.md)：运行、HTTP、公式、能力目录和备份参考
-- [docs/releases/developer-experience-1.1.md](docs/releases/developer-experience-1.1.md)：1.1.0 开发者体验版本发布说明（待发布）
+- [docs/releases/developer-experience-1.1.md](docs/releases/developer-experience-1.1.md)：1.1.0 开发者体验 GitHub 发布回执；PyPI 待配置
 - [docs/releases/source-launch-20261002.md](docs/releases/source-launch-20261002.md)：2026-10-02 开源发布说明
 - [CONTRIBUTING.md](CONTRIBUTING.md)：代码与数据贡献流程
 - [docs/data-sources.md](docs/data-sources.md)：来源、新鲜度、第三方数据权利和私有资料边界

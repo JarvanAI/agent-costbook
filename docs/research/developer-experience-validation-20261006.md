@@ -1,6 +1,6 @@
 # 开发者体验 1.1 验证记录
 
-日期：2026-10-06。源码与本地验收通过；发布回执另见[版本说明](../releases/developer-experience-1.1.md)。本轮不采集或改写实际订阅资料与真实目录。
+日期：2026-10-06。源码与本地验收通过，GitHub v1.1.0 已发布；发布回执另见[版本说明](../releases/developer-experience-1.1.md)。本轮不采集或改写实际订阅资料与真实目录。
 
 [设计与执行合同](../design/developer-experience.md)涵盖独立安装、合成演示、服务入口、只读查询与 Skill。实现与源码复核使用 Grok 4.7 High；文档和独立查询消费者使用 agy Gemini 3.8 Flash High。这些开发工具不是产品运行依赖。
 
@@ -8,7 +8,7 @@
 
 | 检查 | 结果与边界 |
 | --- | --- |
-| `uv run --locked pytest -q` | 223 passed，84.70 秒；一条基线已有的 Starlette/httpx 弃用提示。Linux、Python 3.13；CI 配置使用 Python 3.12，结果见发布回执。 |
+| `uv run --locked pytest -q` | 223 passed，84.70 秒；一条基线已有的 Starlette/httpx 弃用提示。Linux、Python 3.13；GitHub CI 已通过 Linux/Python 3.12，结果见发布回执。 |
 | 安装包使用 | 从 wheel 装入临时环境，在源码目录外验证两个命令别名、demo、setup 幂等、serve、doctor、查询、在线估算、Ctrl-C 退出和旧版导出/迁移/备份/离线估算。 |
 | 只读权限 | 能力 GET 与 M0–M6 的能力附加信息接受 read/admin；写操作和 M7 仍只接受 admin；原公共价格端点保持兼容。 |
 | 配置与路径 | 新配置和数据库为 0600，新建目录为 0700；已有父目录权限、已有配置和数据保留。旧 factory 的 cwd 默认不变。 |

@@ -1,6 +1,6 @@
 # 安装、查询与首次使用设计
 
-日期：2026-10-05。状态：实现与本地验收通过，发布回执待核实。当前命令见 [运行参考](../reference.md)，实际检查见 [验证记录](../research/developer-experience-validation-20261006.md)。
+日期：2026-10-05。状态：实现与验收通过，GitHub v1.1.0 已发布，PyPI 待维护者账号配置。当前命令见 [运行参考](../reference.md)，实际检查见 [验证记录](../research/developer-experience-validation-20261006.md)。
 
 目标是让新用户不必克隆源码或寻找测试文件就能完成一次估算，让外部 Agent 查询带来源、时间和版本的价格与能力事实。ac 提供事实和估算，ar 或其他调用者做 Agent/model/effort 选择。
 
@@ -191,7 +191,7 @@ flowchart TD
 - [x] 运行 `uv run pytest -q`、`uv build`、文档链接及 demo 检查；检查打包资源和私有目录排除。
 - [x] 独立按合同复核，再审查复杂度与权限；发现问题交原执行 Agent 修正。
 - [x] 三个 Skill 标准发现验证；用独立 Agent 加载查询 Skill 对临时合成服务完成实际查询，保存结果。
-- [ ] 合并已验证改动、提交 push，核实 GitHub CI 与 release。
+- [x] 合并已验证改动、提交 push，核实 GitHub CI 与 release。
 - [x] 准备 PyPI workflow/environment 与精确的 Trusted Publisher 配置说明；维护者账号设置尚未就绪，未执行 PyPI 发布。
 
 ## 本地验收结果

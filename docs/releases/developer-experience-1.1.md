@@ -1,6 +1,6 @@
 # Developer Experience Release 1.1.0
 
-> Status: Validated source release candidate; GitHub tag and PyPI publication pending (待发布) until publication is confirmed.
+> Status: [GitHub v1.1.0 released](https://github.com/JarvanAI/agent-costbook/releases/tag/v1.1.0) on 2026-10-06. PyPI publication is pending maintainer Trusted Publisher configuration.
 
 Version 1.1.0 focuses on developer experience, interactive exploration, and external agent integration for `agent-costbook` (`ac`), while maintaining complete backward compatibility with v1.0 data schemas and API endpoints.
 
@@ -105,3 +105,12 @@ The GitHub repository environment `pypi` has been configured. To configure PyPI 
    - **Workflow name**: `publish.yml`
    - **Environment name**: `pypi`
 3. After saving the pending publisher on PyPI, trigger the `.github/workflows/publish.yml` workflow via GitHub Actions `workflow_dispatch` on the release tag with `publish_pypi=true`. Parent will update release receipts once publication completes.
+
+## Publication receipts
+
+- Release tag `v1.1.0` resolves to `18366457e02f51c9f66efde51ad0932ca216ff0f`.
+- [Main CI](https://github.com/JarvanAI/agent-costbook/actions/runs/37411428031), [tag CI](https://github.com/JarvanAI/agent-costbook/actions/runs/37411427877), and [Publish workflow](https://github.com/JarvanAI/agent-costbook/actions/runs/37411427902) succeeded for that commit. These checks ran on Linux/Python 3.12.
+- [GitHub Release](https://github.com/JarvanAI/agent-costbook/releases/tag/v1.1.0) is public, not a draft or prerelease, with `agent_costbook-1.1.0-py3-none-any.whl` and `agent_costbook-1.1.0.tar.gz`.
+- The documented remote `uvx --from git+https://github.com/JarvanAI/agent-costbook.git@v1.1.0 ac demo` was executed successfully. Remote skills CLI discovery found all three Skills.
+- [Local and Agent acceptance](../research/developer-experience-validation-20261006.md): 223 passing tests, installation outside the checkout, and read-only Skill consumption against synthetic data.
+- PyPI job was skipped on tag push as designed. It needs the maintainer's pending publisher before an explicit tagged workflow dispatch with `publish_pypi=true`; no password or API token should be sent to an Agent.
