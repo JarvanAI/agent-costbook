@@ -569,7 +569,7 @@ def test_doctor_empty_catalog_is_not_a_failure(tmp_path):
     assert body["checks"]["health"] == "ok"
     assert body["checks"]["schema"] == "ok"
     assert body["checks"]["auth"]["admin"] == "ok"
-    assert body["checks"]["auth"]["read"] in {"ok", "rejected", "missing", "unchecked"}
+    assert body["checks"]["auth"]["read"] == "ok"
     combined = result.stdout + result.stderr
     assert stored["admin_token"] not in combined
     assert stored["read_token"] not in combined
@@ -590,11 +590,162 @@ def test_doctor_rejects_bad_admin_credential(tmp_path):
     assert result.returncode == 7
     body = _json(result)
     assert body["status"] == "auth"
-    assert body["problems"][0]["repair"]
+    assert body["problems"]
+    assert body["checks"]["auth"]["admin"] == "rejected"
+    assert body["checks"]["auth"]["read"] == "ok"
+    repair = body["problems"][0]["repair"]
+    assert "admin" in repair
+    assert "ACB_ADMIN_TOKEN" in repair
+    assert "setup" not in repair.lower()
     combined = result.stdout + result.stderr
     assert "wrong-admin-value" not in combined
     assert stored["admin_token"] not in combined
     assert stored["read_token"] not in combined
+
+
+def test_doctor_rejects_wrong_read_token_on_a_live_service(tmp_path):
+    home = tmp_path / "home"
+    _, config, database = _paths(home)
+    assert _run(home, ["setup"]).returncode == 0
+    stored = json.loads(config.read_text(encoding="utf-8"))
+    original_config = config.read_bytes()
+    bad = tmp_path / "bad-read-config.json"
+    bad.write_text(
+        json.dumps({**stored, "read_token": "wrong-read-value"}),
+        encoding="utf-8",
+    )
+    bad_bytes = bad.read_bytes()
+    port = _free_port()
+    with _serving(home, port):
+        original_db = database.read_bytes()
+        result = _run(
+            home,
+            ["doctor", "--config", str(bad), "--server", f"http://127.0.0.1:{port}"],
+        )
+        assert database.read_bytes() == original_db
+    assert config.read_bytes() == original_config
+    assert bad.read_bytes() == bad_bytes
+    assert result.returncode == 7, result.stdout + result.stderr
+    body = _json(result)
+    assert body["status"] == "auth"
+    assert body["problems"]
+    assert body["checks"]["auth"]["admin"] == "ok"
+    assert body["checks"]["auth"]["read"] == "rejected"
+    repair = body["problems"][0]["repair"]
+    assert "read" in repair
+    assert "ACB_READ_TOKEN" in repair
+    assert "setup" not in repair.lower()
+    combined = result.stdout + result.stderr
+    assert "wrong-read-value" not in combined
+    assert stored["admin_token"] not in combined
+    assert stored["read_token"] not in combined
+    assert "Traceback" not in combined
+
+
+def test_doctor_rejects_missing_read_credential_on_a_live_service(tmp_path):
+    home = tmp_path / "home"
+    _, config, database = _paths(home)
+    assert _run(home, ["setup"]).returncode == 0
+    stored = json.loads(config.read_text(encoding="utf-8"))
+    original_config = config.read_bytes()
+    port = _free_port()
+    with _serving(home, port):
+        original_db = database.read_bytes()
+        result = _run(
+            home,
+            ["doctor", "--server", f"http://127.0.0.1:{port}"],
+            extra={"ACB_READ_TOKEN": ""},
+        )
+        assert database.read_bytes() == original_db
+    assert config.read_bytes() == original_config
+    assert result.returncode == 7, result.stdout + result.stderr
+    body = _json(result)
+    assert body["status"] == "auth"
+    assert body["problems"]
+    assert body["checks"]["auth"]["admin"] == "ok"
+    assert body["checks"]["auth"]["read"] == "missing"
+    repair = body["problems"][0]["repair"]
+    assert "read" in repair
+    assert "missing" in repair
+    assert "ACB_READ_TOKEN" in repair
+    assert "setup" not in repair.lower()
+    combined = result.stdout + result.stderr
+    assert stored["admin_token"] not in combined
+    assert stored["read_token"] not in combined
+    assert "Traceback" not in combined
+
+
+def test_doctor_transport_when_read_probe_cannot_be_verified(tmp_path):
+    import socket
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    home = tmp_path / "home"
+    _, config, database = _paths(home)
+    assert _run(home, ["setup"]).returncode == 0
+    stored = json.loads(config.read_text(encoding="utf-8"))
+    original_config = config.read_bytes()
+    original_db = database.read_bytes()
+    port = _free_port()
+
+    def _http_json(handler: BaseHTTPRequestHandler, status: int, payload: dict) -> None:
+        raw = json.dumps(payload).encode()
+        handler.send_response(status)
+        handler.send_header("Content-Type", "application/json")
+        handler.send_header("Content-Length", str(len(raw)))
+        handler.end_headers()
+        handler.wfile.write(raw)
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_GET(self) -> None:
+            if self.path == "/health":
+                _http_json(self, 200, {"status": "ok"})
+                return
+            if self.path == "/v1/catalog":
+                _http_json(self, 200, {"records": []})
+                return
+            if self.path == "/v1/capabilities":
+                authorization = self.headers.get("Authorization", "")
+                if authorization == f"Bearer {stored['admin_token']}":
+                    _http_json(self, 200, {"agents": [], "model_efforts": []})
+                    return
+                self.close_connection = True
+                try:
+                    self.connection.shutdown(socket.SHUT_RDWR)
+                except OSError:
+                    pass
+                return
+            _http_json(self, 404, {})
+
+        def log_message(self, format: str, *args) -> None:
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", port), _Handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        result = _run(home, ["doctor", "--server", f"http://127.0.0.1:{port}"])
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+    assert config.read_bytes() == original_config
+    assert database.read_bytes() == original_db
+    assert result.returncode == 6, result.stdout + result.stderr
+    body = _json(result)
+    assert body["status"] == "transport"
+    assert body["problems"]
+    assert body["checks"]["health"] == "ok"
+    assert body["checks"]["auth"]["admin"] == "ok"
+    assert body["checks"]["auth"]["read"] == "unchecked"
+    repair = body["problems"][0]["repair"]
+    assert "read" in repair
+    assert "not a rejected" in repair
+    assert "setup" not in repair.lower()
+    combined = result.stdout + result.stderr
+    assert stored["admin_token"] not in combined
+    assert stored["read_token"] not in combined
+    assert "Traceback" not in combined
 
 
 def test_serve_foreground_health_and_termination(tmp_path):

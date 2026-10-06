@@ -358,10 +358,17 @@ def run_doctor(args: argparse.Namespace) -> int:
         coverage["empty"] = _empty(coverage)
     checks = _checks(config="ok", database="ok", schema="ok", health=health, auth=auth)
     if outcome == "transport":
+        if health == "ok":
+            repair = _unverified_credential_repair(auth)
+        else:
+            repair = (
+                "Nothing is accepting connections at the server. Start it with ac serve, "
+                "or pass --server for an instance that is already running."
+            )
         return _doctor_document(
             status="transport",
             exit_code=EXIT_TRANSPORT,
-            repair="Nothing is accepting connections at the server. Start it with ac serve, or pass --server for an instance that is already running.",
+            repair=repair,
             config=config,
             coverage=coverage,
             checks=checks,
@@ -371,7 +378,7 @@ def run_doctor(args: argparse.Namespace) -> int:
         return _doctor_document(
             status="auth",
             exit_code=EXIT_AUTH,
-            repair="The admin credential was rejected. Check the admin environment override, or run ac setup again only after moving the existing config aside yourself.",
+            repair=_auth_repair(auth),
             config=config,
             coverage=coverage,
             checks=checks,
@@ -732,8 +739,59 @@ def _probe(server: str, config: CliConfig) -> tuple[str, dict, dict, str]:
             live["agents"] = len(admin_body["agents"])
         if isinstance(admin_body.get("model_efforts"), list):
             live["model_efforts"] = len(admin_body["model_efforts"])
-        return "ok", auth, live, "ok"
-    return "ok", auth, live, "auth"
+    return "ok", auth, live, _credential_outcome(admin_state, read_state)
+
+
+def _credential_outcome(admin_state: str, read_state: str) -> str:
+    """Both generated credentials must pass. A 401 or a missing token is auth.
+
+    An exception or unexpected status leaves the probe unchecked. That is a
+    transport failure even when the other credential was accepted, and it is
+    distinct from a rejected credential.
+    """
+
+    if admin_state == "ok" and read_state == "ok":
+        return "ok"
+    if admin_state in {"rejected", "missing"} or read_state in {"rejected", "missing"}:
+        return "auth"
+    return "transport"
+
+
+def _auth_repair(auth: dict) -> str:
+    sentences: list[str] = []
+    envs: list[str] = []
+    for name, env_name in (("admin", "ACB_ADMIN_TOKEN"), ("read", "ACB_READ_TOKEN")):
+        state = auth.get(name)
+        if state == "ok":
+            continue
+        if state == "missing":
+            sentences.append(f"The {name} credential is missing.")
+        elif state == "rejected":
+            sentences.append(f"The {name} credential was rejected.")
+        else:
+            continue
+        envs.append(env_name)
+    joined = " and ".join(envs) if envs else "ACB_ADMIN_TOKEN and ACB_READ_TOKEN"
+    sentences.append(
+        "Restore the correct configuration or environment override, or verify the running service uses "
+        + joined
+        + "."
+    )
+    return " ".join(sentences)
+
+
+def _unverified_credential_repair(auth: dict) -> str:
+    names = [name for name in ("admin", "read") if auth.get(name) == "unchecked"]
+    if len(names) == 2:
+        named = "the admin and read credentials"
+    elif len(names) == 1:
+        named = f"the {names[0]} credential"
+    else:
+        named = "a credential"
+    return (
+        f"The server answered, but {named} could not be verified. "
+        "This is not a rejected credential. Check that the service is still accepting connections."
+    )
 
 
 def _auth_probe(server: str, token: str) -> tuple[str, dict]:
