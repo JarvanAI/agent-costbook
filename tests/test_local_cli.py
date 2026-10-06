@@ -523,6 +523,8 @@ def test_doctor_does_not_write_the_database(tmp_path):
     body = _json(result)
     assert body["status"] == "transport"
     assert body["coverage"]["empty"] is True
+    assert body["coverage"]["prices"] == 0
+    assert body["service_coverage"] is None
     assert "ConnectionRefusedError" not in result.stdout + result.stderr
     assert "Traceback" not in result.stdout + result.stderr
     assert config.read_bytes() == original_config
@@ -566,6 +568,12 @@ def test_doctor_empty_catalog_is_not_a_failure(tmp_path):
         "model_efforts": 0,
         "empty": True,
     }
+    assert body["notes"] == ["The catalog is empty."]
+    assert body["service_coverage"] == {
+        "prices": 0,
+        "agents": 0,
+        "model_efforts": 0,
+    }
     assert body["checks"]["health"] == "ok"
     assert body["checks"]["schema"] == "ok"
     assert body["checks"]["auth"]["admin"] == "ok"
@@ -593,6 +601,17 @@ def test_doctor_rejects_bad_admin_credential(tmp_path):
     assert body["problems"]
     assert body["checks"]["auth"]["admin"] == "rejected"
     assert body["checks"]["auth"]["read"] == "ok"
+    assert body["coverage"] == {
+        "prices": 0,
+        "agents": 0,
+        "model_efforts": 0,
+        "empty": True,
+    }
+    assert body["service_coverage"] == {
+        "prices": 0,
+        "agents": 0,
+        "model_efforts": 0,
+    }
     repair = body["problems"][0]["repair"]
     assert "admin" in repair
     assert "ACB_ADMIN_TOKEN" in repair
@@ -631,6 +650,13 @@ def test_doctor_rejects_wrong_read_token_on_a_live_service(tmp_path):
     assert body["problems"]
     assert body["checks"]["auth"]["admin"] == "ok"
     assert body["checks"]["auth"]["read"] == "rejected"
+    assert body["coverage"]["empty"] is True
+    assert body["coverage"]["prices"] == 0
+    assert body["service_coverage"] == {
+        "prices": 0,
+        "agents": 0,
+        "model_efforts": 0,
+    }
     repair = body["problems"][0]["repair"]
     assert "read" in repair
     assert "ACB_READ_TOKEN" in repair
@@ -664,6 +690,13 @@ def test_doctor_rejects_missing_read_credential_on_a_live_service(tmp_path):
     assert body["problems"]
     assert body["checks"]["auth"]["admin"] == "ok"
     assert body["checks"]["auth"]["read"] == "missing"
+    assert body["coverage"]["empty"] is True
+    assert body["coverage"]["agents"] == 0
+    assert body["service_coverage"] == {
+        "prices": 0,
+        "agents": 0,
+        "model_efforts": 0,
+    }
     repair = body["problems"][0]["repair"]
     assert "read" in repair
     assert "missing" in repair
@@ -738,6 +771,17 @@ def test_doctor_transport_when_read_probe_cannot_be_verified(tmp_path):
     assert body["checks"]["health"] == "ok"
     assert body["checks"]["auth"]["admin"] == "ok"
     assert body["checks"]["auth"]["read"] == "unchecked"
+    assert body["coverage"] == {
+        "prices": 0,
+        "agents": 0,
+        "model_efforts": 0,
+        "empty": True,
+    }
+    assert body["service_coverage"] == {
+        "prices": 0,
+        "agents": 0,
+        "model_efforts": 0,
+    }
     repair = body["problems"][0]["repair"]
     assert "read" in repair
     assert "not a rejected" in repair
@@ -745,6 +789,154 @@ def test_doctor_transport_when_read_probe_cannot_be_verified(tmp_path):
     combined = result.stdout + result.stderr
     assert stored["admin_token"] not in combined
     assert stored["read_token"] not in combined
+    assert "Traceback" not in combined
+
+
+def _seed_distinct_service(database: Path) -> None:
+    from agent_costbook.store import Store
+
+    from support import synthetic_contribution
+
+    store = Store(database)
+    try:
+        created, inserted = store.create_contribution(synthetic_contribution(), None)
+        assert inserted is True
+        store.publish(created["contribution_id"])
+        store.save_agent_capability(
+            {
+                "agent_id": "synthetic-agent",
+                "expected_version": 0,
+                "source": "user_observation",
+                "as_of": "2026-09-25T00:00:00+00:00",
+            }
+        )
+        store.save_model_effort(
+            {
+                "provider": "example",
+                "model": "synthetic-m4",
+                "effort": None,
+                "expected_version": 0,
+                "source": "user_observation",
+                "as_of": "2026-09-25T00:00:00+00:00",
+            }
+        )
+    finally:
+        store.close()
+
+
+def _http_json(url: str, token: str | None = None) -> tuple[int, dict]:
+    request = urllib.request.Request(url)
+    if token:
+        request.add_header("Authorization", "Bearer " + token)
+    try:
+        with urllib.request.urlopen(request, timeout=3) as response:
+            body = json.load(response)
+            return response.status, body if isinstance(body, dict) else {}
+    except urllib.error.HTTPError as exc:
+        raw = exc.read()
+        try:
+            body = json.loads(raw.decode()) if raw else {}
+        except json.JSONDecodeError:
+            body = {}
+        return exc.code, body if isinstance(body, dict) else {}
+
+
+def test_doctor_keeps_local_coverage_apart_from_another_service(tmp_path):
+    home_a = tmp_path / "home-a"
+    home_b = tmp_path / "home-b"
+    _, config_a, database_a = _paths(home_a)
+    _, config_b, database_b = _paths(home_b)
+    assert _run(home_a, ["setup"]).returncode == 0
+    assert _run(home_b, ["setup"]).returncode == 0
+    _seed_distinct_service(database_b)
+    stored_a = json.loads(config_a.read_text(encoding="utf-8"))
+    stored_b = json.loads(config_b.read_text(encoding="utf-8"))
+    original_config_a = config_a.read_bytes()
+    original_config_b = config_b.read_bytes()
+    port = _free_port()
+    base = f"http://127.0.0.1:{port}"
+    local_empty = {"prices": 0, "agents": 0, "model_efforts": 0, "empty": True}
+    with _serving(home_b, port):
+        original_db_a = database_a.read_bytes()
+        original_db_b = database_b.read_bytes()
+        catalog_status, catalog = _http_json(base + "/v1/catalog")
+        cap_status, capabilities = _http_json(base + "/v1/capabilities", stored_b["admin_token"])
+        rejected_status, _ = _http_json(base + "/v1/capabilities", stored_a["admin_token"])
+        assert catalog_status == 200
+        assert isinstance(catalog.get("records"), list)
+        assert len(catalog["records"]) == 1
+        assert catalog["records"][0]["model"] == "synthetic-m4"
+        assert cap_status == 200
+        assert len(capabilities["agents"]) == 1
+        assert len(capabilities["model_efforts"]) == 1
+        assert rejected_status == 401
+        verified = {
+            "prices": len(catalog["records"]),
+            "agents": len(capabilities["agents"]),
+            "model_efforts": len(capabilities["model_efforts"]),
+        }
+
+        mismatched = _run(home_a, ["doctor", "--config", str(config_a), "--server", base])
+        read_only = _run(
+            home_a,
+            ["doctor", "--config", str(config_a), "--server", base],
+            extra={"ACB_READ_TOKEN": stored_b["read_token"]},
+        )
+        matched = _run(
+            home_a,
+            ["doctor", "--config", str(config_a), "--server", base],
+            extra={
+                "ACB_ADMIN_TOKEN": stored_b["admin_token"],
+                "ACB_READ_TOKEN": stored_b["read_token"],
+            },
+        )
+        assert database_a.read_bytes() == original_db_a
+        assert database_b.read_bytes() == original_db_b
+    assert config_a.read_bytes() == original_config_a
+    assert config_b.read_bytes() == original_config_b
+    assert not database_a.with_name(database_a.name + "-wal").exists()
+
+    mismatched_body = _json(mismatched)
+    assert mismatched.returncode == 7
+    assert mismatched_body["status"] == "auth"
+    assert mismatched_body["paths"]["db"] == str(database_a)
+    assert mismatched_body["paths"]["config"] == str(config_a)
+    assert mismatched_body["coverage"] == local_empty
+    assert mismatched_body["service_coverage"] == {"prices": verified["prices"]}
+    assert "agents" not in mismatched_body["service_coverage"]
+    assert "model_efforts" not in mismatched_body["service_coverage"]
+    assert mismatched_body["checks"]["auth"]["admin"] == "rejected"
+    assert mismatched_body["checks"]["auth"]["read"] == "rejected"
+    assert "setup" not in mismatched_body["problems"][0]["repair"].lower()
+
+    read_body = _json(read_only)
+    assert read_only.returncode == 7
+    assert read_body["status"] == "auth"
+    assert read_body["coverage"] == local_empty
+    assert read_body["service_coverage"] == verified
+    assert read_body["checks"]["auth"]["admin"] == "rejected"
+    assert read_body["checks"]["auth"]["read"] == "ok"
+    assert "admin" in read_body["problems"][0]["repair"]
+    assert "ACB_ADMIN_TOKEN" in read_body["problems"][0]["repair"]
+    assert "setup" not in read_body["problems"][0]["repair"].lower()
+
+    matched_body = _json(matched)
+    assert matched.returncode == 0, matched.stderr
+    assert matched_body["status"] == "ok"
+    assert matched_body["problems"] == []
+    assert matched_body["paths"]["db"] == str(database_a)
+    assert matched_body["coverage"] == local_empty
+    assert matched_body["notes"] == ["The catalog is empty."]
+    assert matched_body["service_coverage"] == verified
+    assert matched_body["checks"]["auth"]["admin"] == "ok"
+    assert matched_body["checks"]["auth"]["read"] == "ok"
+
+    combined = mismatched.stdout + mismatched.stderr + read_only.stdout + read_only.stderr
+    combined += matched.stdout + matched.stderr
+    assert stored_a["admin_token"] not in combined
+    assert stored_a["read_token"] not in combined
+    assert stored_b["admin_token"] not in combined
+    assert stored_b["read_token"] not in combined
     assert "Traceback" not in combined
 
 

@@ -353,9 +353,7 @@ def run_doctor(args: argparse.Namespace) -> int:
             db=str(config.db_path),
         )
     health, auth, live, outcome = _probe(server, config)
-    if live:
-        coverage.update(live)
-        coverage["empty"] = _empty(coverage)
+    service_coverage = dict(live) if health == "ok" and live else None
     checks = _checks(config="ok", database="ok", schema="ok", health=health, auth=auth)
     if outcome == "transport":
         if health == "ok":
@@ -371,6 +369,7 @@ def run_doctor(args: argparse.Namespace) -> int:
             repair=repair,
             config=config,
             coverage=coverage,
+            service_coverage=service_coverage,
             checks=checks,
             server=server,
         )
@@ -381,6 +380,7 @@ def run_doctor(args: argparse.Namespace) -> int:
             repair=_auth_repair(auth),
             config=config,
             coverage=coverage,
+            service_coverage=service_coverage,
             checks=checks,
             server=server,
         )
@@ -391,6 +391,7 @@ def run_doctor(args: argparse.Namespace) -> int:
         repair="",
         config=config,
         coverage=coverage,
+        service_coverage=service_coverage,
         checks=checks,
         server=server,
         notes=notes,
@@ -732,13 +733,13 @@ def _probe(server: str, config: CliConfig) -> tuple[str, dict, dict, str]:
     except (TransportError, DataError):
         return "down", {"admin": "unchecked", "read": "unchecked"}, live, "transport"
     admin_state, admin_body = _auth_probe(server, config.admin_token)
-    read_state, _ = _auth_probe(server, config.read_token)
+    read_state, read_body = _auth_probe(server, config.read_token)
     auth = {"admin": admin_state, "read": read_state}
-    if admin_state == "ok":
-        if isinstance(admin_body.get("agents"), list):
-            live["agents"] = len(admin_body["agents"])
-        if isinstance(admin_body.get("model_efforts"), list):
-            live["model_efforts"] = len(admin_body["model_efforts"])
+    counted = admin_body if admin_state == "ok" else read_body if read_state == "ok" else {}
+    if isinstance(counted.get("agents"), list):
+        live["agents"] = len(counted["agents"])
+    if isinstance(counted.get("model_efforts"), list):
+        live["model_efforts"] = len(counted["model_efforts"])
     return "ok", auth, live, _credential_outcome(admin_state, read_state)
 
 
@@ -845,6 +846,7 @@ def _doctor_document(
     config: CliConfig,
     coverage: dict | None,
     checks: dict,
+    service_coverage: dict | None = None,
     server: str | None = None,
     notes: list[str] | None = None,
     problems: list[dict] | None = None,
@@ -855,6 +857,7 @@ def _doctor_document(
         "problems": problems if problems is not None else [{"code": problem_code or status, "repair": repair}],
         "notes": notes or [],
         "coverage": coverage,
+        "service_coverage": service_coverage,
         "checks": checks,
         "paths": {"config": str(config.path), "db": str(config.db_path)},
         "server": server or config.server,
