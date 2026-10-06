@@ -5,6 +5,7 @@ import threading
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
@@ -71,21 +72,21 @@ def served(respond):
 
 
 def _config(server="", read_token="", admin_token=""):
-    return {
-        "db_path": None,
-        "admin_token": admin_token,
-        "read_token": read_token,
-        "server": server,
-    }
+    return SimpleNamespace(
+        db_path=None,
+        admin_token=admin_token,
+        read_token=read_token,
+        server=server,
+    )
 
 
 def _install_config(monkeypatch, server="", read_token="", admin_token="", calls=None):
-    def load_cli_config(config_path=None):
+    def load_cli_config(config_path=None, db=None):
         if calls is not None:
             calls.append(config_path)
         return _config(server, read_token, admin_token)
 
-    monkeypatch.setattr("agent_costbook.query._load_cli_config", load_cli_config)
+    monkeypatch.setattr("agent_costbook.query.load_cli_config", load_cli_config)
 
 
 def _parser():
@@ -245,13 +246,15 @@ def test_register_query_defaults_json_and_has_no_token_argument():
         parser.parse_args(["query", "research"])
 
 
-def test_query_module_imports_config_helper_lazily():
-    source = Path(__import__("agent_costbook.query").__file__).read_text(encoding="utf-8")
+def test_query_module_uses_the_cli_config_helper():
+    import agent_costbook.query as query
+
+    source = Path(query.__file__).read_text(encoding="utf-8")
+    imported = []
     for node in ast.parse(source).body:
         if isinstance(node, ast.ImportFrom) and node.module == "agent_costbook.local":
-            raise AssertionError("local config helper is imported at module import")
-        if isinstance(node, ast.Import):
-            assert all(alias.name != "agent_costbook.local" for alias in node.names)
+            imported.extend(alias.name for alias in node.names)
+    assert {"load_cli_config", "query_credential", "LocalError"} <= set(imported)
 
 
 def test_prices_filter_preserves_catalog_envelope_and_source(monkeypatch, capsys):
@@ -455,7 +458,7 @@ def test_capabilities_without_token_or_rejected_token_are_unauthorized(monkeypat
         assert captured.out == ""
         assert captured.err == "unauthorized\n"
         assert receipts == []
-        monkeypatch.setenv("ACB_READ_TOKEN", READ)
+        _install_config(monkeypatch, server=base, read_token=READ)
         assert run_query(_query("model-efforts", server=base, provider="openai")) == 2
         captured = capsys.readouterr()
         assert captured.out == ""
@@ -465,31 +468,15 @@ def test_capabilities_without_token_or_rejected_token_are_unauthorized(monkeypat
         assert receipts[-1]["authorization"] == f"Bearer {READ}"
 
 
-def test_auth_header_prefers_read_token_then_admin(monkeypatch, capsys):
+def test_resolved_config_prefers_read_token_then_admin(monkeypatch, capsys):
     def respond(receipt):
         return 200, {"agents": [], "model_efforts": []}, []
 
     with served(respond) as (base, receipts):
-        _install_config(
-            monkeypatch,
-            server=base,
-            read_token="config-read",
-            admin_token="config-admin",
-        )
-        monkeypatch.setenv("ACB_READ_TOKEN", "env-read")
-        monkeypatch.setenv("ACB_ADMIN_TOKEN", "env-admin")
-        assert run_query(_query("agents", server=base)) == 0
-        assert receipts[-1]["authorization"] == "Bearer env-read"
-        monkeypatch.delenv("ACB_READ_TOKEN")
+        _install_config(monkeypatch, server=base, read_token="config-read", admin_token="config-admin")
         assert run_query(_query("agents", server=base)) == 0
         assert receipts[-1]["authorization"] == "Bearer config-read"
-        monkeypatch.setattr(
-            "agent_costbook.query._load_cli_config",
-            lambda config_path=None: _config(base, "", "config-admin"),
-        )
-        assert run_query(_query("agents", server=base)) == 0
-        assert receipts[-1]["authorization"] == "Bearer env-admin"
-        monkeypatch.delenv("ACB_ADMIN_TOKEN")
+        _install_config(monkeypatch, server=base, read_token="", admin_token="config-admin")
         assert run_query(_query("agents", server=base)) == 0
         assert receipts[-1]["authorization"] == "Bearer config-admin"
         capsys.readouterr()
@@ -656,67 +643,37 @@ def test_default_server_is_loopback_8080(monkeypatch, capsys):
     assert captured.err == ""
 
 
-def test_helper_attribute_config_supplies_server_and_read_token(monkeypatch, capsys):
-    class Config:
-        db_path = None
-        admin_token = "config-admin"
-        read_token = "config-read"
-        server = ""
-
-    config = Config()
+def test_simple_namespace_config_supplies_server_and_read_token(monkeypatch, capsys):
+    config = SimpleNamespace(db_path=None, admin_token="config-admin", read_token="config-read", server="")
 
     def respond(receipt):
         return 200, {"agents": [], "model_efforts": []}, []
 
     with served(respond) as (base, receipts):
         config.server = base
-        monkeypatch.setattr("agent_costbook.query._load_cli_config", lambda config_path=None: config)
-        monkeypatch.setenv("ACB_ADMIN_TOKEN", "env-admin")
+        monkeypatch.setattr(
+            "agent_costbook.query.load_cli_config",
+            lambda config_path=None, db=None: config,
+        )
         assert run_query(_query("agents")) == 0
         assert receipts[-1]["authorization"] == "Bearer config-read"
     captured = capsys.readouterr()
     assert "config-read" not in captured.err
-    assert "env-admin" not in captured.err
+    assert "config-admin" not in captured.err
 
 
 def test_local_config_error_prints_only_its_code(monkeypatch, capsys):
-    class LocalError(Exception):
-        def __init__(self):
-            super().__init__("config_invalid")
-            self.code = "config_invalid"
-            self.repair = "token " + READ
-            self.exit_code = 3
+    from agent_costbook.local import LocalError
 
-    def load_cli_config(config_path=None):
-        raise LocalError()
+    def load_cli_config(config_path=None, db=None):
+        raise LocalError("config_invalid", "repair mentions " + READ, exit_code=3)
 
-    monkeypatch.setattr("agent_costbook.query._load_cli_config", load_cli_config)
+    monkeypatch.setattr("agent_costbook.query.load_cli_config", load_cli_config)
     assert run_query(_query("prices", server="http://127.0.0.1:9")) == 3
     captured = capsys.readouterr()
     assert captured.out == ""
     assert captured.err == "config_invalid\n"
     assert READ not in captured.err
-
-
-def test_missing_default_config_still_allows_explicit_server(monkeypatch, capsys):
-    def missing(config_path=None):
-        raise FileNotFoundError(config_path or "config")
-
-    monkeypatch.setattr("agent_costbook.query._load_cli_config", missing)
-
-    def respond(receipt):
-        return 200, _empty_catalog(), []
-
-    with served(respond) as (base, receipts):
-        assert run_query(_query("prices", server=base)) == 0
-        assert len(receipts) == 1
-        document, err = _json_out(capsys)
-        assert err == ""
-        assert document["records"] == []
-        assert run_query(_query("prices", server=base, config="/tmp/missing-ac.json")) == 2
-        captured = capsys.readouterr()
-        assert captured.out == ""
-        assert captured.err == "config\n"
 
 
 def test_stopped_service_redirect_and_error_body_do_not_reveal_tokens(monkeypatch, capsys):
@@ -866,7 +823,7 @@ def test_m7_uses_admin_token_and_never_falls_back_to_read(monkeypatch, capsys, t
         assert document["snapshot_id"] == "snap-4"
         monkeypatch.delenv("ACB_ADMIN_TOKEN")
         monkeypatch.setattr(
-            "agent_costbook.query._load_cli_config",
+            "agent_costbook.query.load_cli_config",
             lambda config_path=None: _config(base, READ, ""),
         )
         assert estimate_online(_estimate_args(request=str(path), server=base)) == 2
@@ -914,3 +871,247 @@ def test_online_estimate_rejects_offline_snapshot_flags(monkeypatch, capsys, tmp
             assert captured.out == ""
             assert captured.err == "offline_only\n"
         assert receipts == []
+
+
+ROOT = Path(__file__).resolve().parents[1]
+FILE_READ = "file-read-token"
+FILE_ADMIN = "file-admin-token"
+ENV_READ = "env-read-token"
+ENV_ADMIN = "env-admin-token"
+
+
+def _invoke(argv: list[str]) -> int:
+    from agent_costbook.offline import main
+
+    try:
+        return main(argv)
+    except SystemExit as exc:
+        return int(exc.code)
+
+
+def _isolate_config(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    monkeypatch.delenv("ACB_CONFIG", raising=False)
+
+
+def _write_real_config(path: Path, *, server: str, admin: str, read: str, db: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "version": 1,
+                "db_path": str(db.resolve()),
+                "admin_token": admin,
+                "read_token": read,
+                "server": server,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def _agent_scope(server: str) -> dict:
+    return {
+        "kind": "agent-costbook.data-scope",
+        "contract_version": 1,
+        "id": "token-run",
+        "server": server,
+        "visibility": "public",
+        "items": [
+            {
+                "item_id": "local-agent",
+                "category": "agent",
+                "collection": "manual",
+                "mapping": "A person wrote this observation.",
+                "candidate": {
+                    "agent_id": "local-agent",
+                    "source": "user_observation",
+                    "as_of": "2026-09-28T00:00:00+00:00",
+                    "strengths": "edits the batch",
+                },
+            }
+        ],
+    }
+
+
+def test_version_flag_still_prints_the_package_version(capsys):
+    from agent_costbook import __version__
+
+    assert _invoke(["--version"]) == 0
+    assert capsys.readouterr().out.strip() == __version__
+
+
+def test_registered_query_prices_without_setup_uses_explicit_server(monkeypatch, capsys, tmp_path):
+    _isolate_config(monkeypatch, tmp_path)
+
+    def respond(receipt):
+        assert receipt["authorization"] is None
+        return 200, _empty_catalog(), []
+
+    with served(respond) as (base, receipts):
+        assert _invoke(["query", "prices", "--server", base]) == 0
+        assert len(receipts) == 1
+        assert receipts[0]["path"] == "/v1/catalog"
+    document, err = _json_out(capsys)
+    assert err == ""
+    assert document["records"] == []
+
+
+def test_real_config_env_precedence_and_explicit_server(monkeypatch, capsys, tmp_path):
+    _isolate_config(monkeypatch, tmp_path)
+    config_path = tmp_path / "config.json"
+    _write_real_config(
+        config_path,
+        server="http://127.0.0.1:9",
+        admin=FILE_ADMIN,
+        read=FILE_READ,
+        db=tmp_path / "costbook.sqlite3",
+    )
+
+    def respond(receipt):
+        path, _query = _query_parts(receipt["path"])
+        if path == "/v1/catalog":
+            return 200, _empty_catalog(), []
+        if path == "/v1/capabilities":
+            return 200, {"agents": [], "model_efforts": []}, []
+        if path == "/v1/estimates":
+            sent = json.loads(receipt["body"])
+            return 200, {
+                "publisher_id": "pub_local",
+                "data_version": 1,
+                "snapshot_id": "snap-1",
+                "results": [{"candidate_id": sent["candidates"][0]["candidate_id"], "status": "ok"}],
+            }, []
+        return 404, {"detail": "missing"}, []
+
+    with served(respond) as (base, receipts):
+        assert _invoke(["query", "prices", "--server", base, "--config", str(config_path)]) == 0
+        assert receipts[-1]["authorization"] is None
+        assert _invoke(["query", "agents", "--config", str(config_path), "--server", base]) == 0
+        assert receipts[-1]["authorization"] == f"Bearer {FILE_READ}"
+        monkeypatch.setenv("ACB_READ_TOKEN", ENV_READ)
+        monkeypatch.setenv("ACB_ADMIN_TOKEN", ENV_ADMIN)
+        assert _invoke(["query", "agents", "--config", str(config_path), "--server", base]) == 0
+        assert receipts[-1]["authorization"] == f"Bearer {ENV_READ}"
+        monkeypatch.setenv("ACB_READ_TOKEN", "")
+        assert _invoke(["query", "agents", "--config", str(config_path), "--server", base]) == 0
+        assert receipts[-1]["authorization"] == f"Bearer {ENV_ADMIN}"
+        request = _request(tmp_path, _valid_request("M7"))
+        assert _invoke(["estimate", "--server", base, "--request", str(request), "--config", str(config_path)]) == 0
+        assert receipts[-1]["path"] == "/v1/estimates"
+        assert receipts[-1]["authorization"] == f"Bearer {ENV_ADMIN}"
+        monkeypatch.delenv("ACB_ADMIN_TOKEN")
+        assert _invoke(["estimate", "--server", base, "--request", str(request), "--config", str(config_path)]) == 0
+        assert receipts[-1]["authorization"] == f"Bearer {FILE_ADMIN}"
+    captured = capsys.readouterr()
+    assert FILE_READ not in captured.err
+    assert FILE_ADMIN not in captured.err
+    assert ENV_READ not in captured.err
+    assert ENV_ADMIN not in captured.err
+
+
+def test_invalid_config_code_hides_the_file_text(monkeypatch, capsys, tmp_path):
+    _isolate_config(monkeypatch, tmp_path)
+    config_path = tmp_path / "config.json"
+    config_path.write_text('{"admin_token":"' + FILE_ADMIN + '"}', encoding="utf-8")
+    assert _invoke(["query", "prices", "--server", "http://127.0.0.1:9", "--config", str(config_path)]) == 3
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "config_invalid\n"
+    assert FILE_ADMIN not in captured.err
+
+
+def test_estimate_source_is_required_and_exclusive(capsys):
+    assert _invoke(["estimate", "--request", "request.json"]) == 2
+    assert (
+        _invoke(
+            [
+                "estimate",
+                "--snapshot", "snapshot.json",
+                "--server", "http://127.0.0.1:9",
+                "--request", "request.json",
+            ]
+        )
+        == 2
+    )
+    captured = capsys.readouterr()
+    assert "snapshot.json" not in captured.out
+
+
+def test_registered_offline_estimate_keeps_the_snapshot_result(capsys):
+    code = _invoke(
+        [
+            "estimate",
+            "--snapshot",
+            str(ROOT / "tests/fixtures/ac-v0.2-published-snapshot.json"),
+            "--request",
+            str(ROOT / "examples/estimate-request.json"),
+            "--publisher",
+            "pub_sample",
+        ]
+    )
+    assert code == 0
+    document = json.loads(capsys.readouterr().out)
+    assert document["publisher_id"] == "pub_sample"
+    assert document["results"][0]["candidate_id"] == "synthetic-m4"
+    assert document["results"][0]["status"] == "ok"
+    assert document["results"][0]["metrics"]["cost"] == "0.0177"
+
+
+def test_data_remote_commands_use_admin_config_and_plan_stays_config_free(monkeypatch, capsys, tmp_path):
+    _isolate_config(monkeypatch, tmp_path)
+    broken = tmp_path / "broken.json"
+    broken.write_text('{"admin_token":"' + FILE_ADMIN + '"}', encoding="utf-8")
+    monkeypatch.setenv("ACB_CONFIG", str(broken))
+    scope = tmp_path / "scope.json"
+    batch = tmp_path / "batch"
+
+    def respond(receipt):
+        if receipt["path"] == "/v1/catalog":
+            return 200, _empty_catalog(), []
+        if receipt["path"] == "/v1/capabilities":
+            return 200, {"agents": [], "model_efforts": []}, []
+        return 500, {"detail": FILE_ADMIN}, []
+
+    with served(respond) as (base, receipts):
+        scope.write_text(json.dumps(_agent_scope(base)), encoding="utf-8")
+        assert _invoke(["data", "plan", "--mode", "init", "--scope", str(scope), "--out", str(batch)]) == 0
+        assert _invoke(["data", "validate", "--batch", str(batch)]) == 0
+        assert _invoke(["data", "diff", "--batch", str(batch), "--server", base]) == 3
+        captured = capsys.readouterr()
+        assert "config_invalid" in captured.err
+        assert FILE_ADMIN not in captured.out
+        assert FILE_ADMIN not in captured.err
+        monkeypatch.delenv("ACB_CONFIG")
+        config_path = tmp_path / "good.json"
+        _write_real_config(
+            config_path,
+            server=base,
+            admin=FILE_ADMIN,
+            read=FILE_READ,
+            db=tmp_path / "costbook.sqlite3",
+        )
+        assert (
+            _invoke(["data", "diff", "--batch", str(batch), "--server", base, "--config", str(config_path)])
+            == 0
+        )
+        authorized = [item for item in receipts if item["path"] == "/v1/capabilities"]
+        assert authorized
+        assert authorized[-1]["authorization"] == f"Bearer {FILE_ADMIN}"
+        monkeypatch.setenv("ACB_READ_TOKEN", ENV_READ)
+        monkeypatch.setenv("ACB_ADMIN_TOKEN", ENV_ADMIN)
+        assert _invoke(["data", "diff", "--batch", str(batch), "--server", base, "--config", str(config_path)]) == 0
+        authorized = [item for item in receipts if item["path"] == "/v1/capabilities"]
+        assert authorized[-1]["authorization"] == f"Bearer {ENV_ADMIN}"
+        assert _invoke(["data", "diff", "--batch", str(batch), "--server", base]) == 0
+        authorized = [item for item in receipts if item["path"] == "/v1/capabilities"]
+        assert authorized[-1]["authorization"] == f"Bearer {ENV_ADMIN}"
+        monkeypatch.delenv("ACB_ADMIN_TOKEN")
+        monkeypatch.delenv("ACB_READ_TOKEN")
+        assert _invoke(["data", "diff", "--batch", str(batch), "--server", base]) == 2
+        captured = capsys.readouterr()
+        assert captured.err.splitlines()[-1] == "unauthorized"
+        assert FILE_ADMIN not in captured.err
+        assert ENV_ADMIN not in captured.err
+        assert FILE_READ not in captured.out and FILE_READ not in captured.err
+        assert ENV_READ not in captured.out and ENV_READ not in captured.err

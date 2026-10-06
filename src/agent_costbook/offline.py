@@ -331,13 +331,17 @@ def _emit(document: dict) -> None:
 def main(argv: list[str] | None = None) -> int:
     from agent_costbook import __version__
     from agent_costbook.local import register_local, run_local
+    from agent_costbook.query import estimate_online, register_query, run_query
 
     parser = argparse.ArgumentParser(prog="ac")
     parser.add_argument("--version", action="store_true", help="print the package version and exit")
     commands = parser.add_subparsers(dest="command")
     estimate = commands.add_parser("estimate")
-    estimate.add_argument("--snapshot", required=True)
+    source = estimate.add_mutually_exclusive_group(required=True)
+    source.add_argument("--snapshot")
+    source.add_argument("--server")
     estimate.add_argument("--request", required=True)
+    estimate.add_argument("--config")
     estimate.add_argument("--publisher")
     estimate.add_argument("--now")
     estimate.add_argument("--max-age-seconds", type=int)
@@ -348,6 +352,7 @@ def main(argv: list[str] | None = None) -> int:
     collect.add_argument("--now")
     register_data(commands)
     register_local(commands)
+    register_query(commands)
     args = parser.parse_args(argv)
     if args.version:
         print(__version__)
@@ -361,6 +366,10 @@ def main(argv: list[str] | None = None) -> int:
         return _collect(args.db, args.now, args.max_runtime)
     if args.command == "data":
         return run_data(args)
+    if args.command == "query":
+        return run_query(args)
+    if args.server:
+        return estimate_online(args)
     return _estimate(args)
 
 

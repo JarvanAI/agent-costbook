@@ -13,6 +13,7 @@ from urllib.parse import quote, urlencode
 from pydantic import ValidationError
 
 from agent_costbook.data_batch import DataError, ServiceClient, TransportError
+from agent_costbook.local import LocalError, load_cli_config, query_credential
 from agent_costbook.models import EstimateIn
 
 _DEFAULT_SERVER = "http://127.0.0.1:8080"
@@ -38,12 +39,6 @@ _EVIDENCE_FIELDS = (
     "content_sha256",
 )
 _RESEARCH_FIELDS = ("id", "title")
-
-
-def _load_cli_config(config_path: str | None = None) -> dict:
-    from agent_costbook.local import load_cli_config
-
-    return load_cli_config(config_path=config_path)
 
 
 def _failure(status: int) -> str | None:
@@ -79,80 +74,23 @@ def _emit(document: dict) -> None:
         buffer.flush()
 
 
-def _config_view(loaded: object) -> dict:
-    if loaded is None:
-        return {}
-    if isinstance(loaded, dict):
-        return loaded
-    read_token = getattr(loaded, "read_token", "")
-    admin_token = getattr(loaded, "admin_token", "")
-    server = getattr(loaded, "server", "")
-    if not all(isinstance(item, str) for item in (read_token, admin_token, server)):
-        raise DataError("config")
-    return {
-        "db_path": getattr(loaded, "db_path", None),
-        "admin_token": admin_token,
-        "read_token": read_token,
-        "server": server,
-    }
-
-
-def _config(args: argparse.Namespace) -> dict:
-    path = getattr(args, "config", None)
+def _resolved(args: argparse.Namespace):
     try:
-        loaded = _load_cli_config(path)
-    except ImportError:
-        loaded = {}
-    except FileNotFoundError:
-        if path:
-            raise DataError("config") from None
-        loaded = {}
-    except Exception as exc:
-        if type(exc).__name__ != "LocalError":
-            raise
-        code = getattr(exc, "code", None)
-        exit_code = getattr(exc, "exit_code", None)
-        if not isinstance(code, str) or not isinstance(exit_code, int):
-            raise DataError("config") from None
-        raise DataError(code, exit_code=exit_code) from None
-    return _config_view(loaded)
+        return load_cli_config(getattr(args, "config", None))
+    except LocalError as exc:
+        raise DataError(exc.code, exit_code=exc.exit_code) from None
 
 
-def _text(value: object) -> str:
-    if isinstance(value, str) and value:
-        return value
-    return ""
-
-
-def _server(args: argparse.Namespace, config: dict) -> str:
-    explicit = _text(getattr(args, "server", None))
-    if explicit:
+def _server(args: argparse.Namespace, config) -> str:
+    explicit = getattr(args, "server", None)
+    if isinstance(explicit, str) and explicit:
         return explicit
-    environ = _text(os.environ.get("ACB_SERVER", ""))
+    environ = os.environ.get("ACB_SERVER", "")
     if environ:
         return environ
-    configured = _text(config.get("server"))
-    if configured:
-        return configured
+    if config.server:
+        return config.server
     return _DEFAULT_SERVER
-
-
-def _configured_secret(env_name: str, config: dict, key: str) -> str:
-    environ = os.environ.get(env_name, "")
-    if environ:
-        return environ
-    return _text(config.get(key))
-
-
-def _query_token(config: dict) -> str:
-    read = _configured_secret("ACB_READ_TOKEN", config, "read_token")
-    if read:
-        return read
-    return _configured_secret("ACB_ADMIN_TOKEN", config, "admin_token")
-
-
-def _admin_token(config: dict) -> str:
-    return _configured_secret("ACB_ADMIN_TOKEN", config, "admin_token")
 
 
 def _accepted(status: int, body: dict) -> dict:
@@ -299,7 +237,7 @@ def _prices(args: argparse.Namespace, server: str, fmt: str) -> int:
 
 
 def _agents(args: argparse.Namespace, server: str, config: dict, fmt: str) -> int:
-    token = _query_token(config)
+    token = query_credential(config)
     agent_id = getattr(args, "agent_id", None)
     if agent_id is not None:
         path = "/v1/capabilities/agents?" + urlencode([("agent_id", agent_id)])
@@ -321,7 +259,7 @@ def _effort_matches(row: dict, effort: str) -> bool:
 
 
 def _model_efforts(args: argparse.Namespace, server: str, config: dict, fmt: str) -> int:
-    token = _query_token(config)
+    token = query_credential(config)
     provider = getattr(args, "provider", None)
     model = getattr(args, "model", None)
     effort = getattr(args, "effort", None)
@@ -363,7 +301,7 @@ def _resource(args: argparse.Namespace, server: str, fmt: str, kind: str) -> int
 
 def _run_query(args: argparse.Namespace) -> int:
     command = getattr(args, "query_command", None)
-    config = _config(args)
+    config = _resolved(args)
     server = _server(args, config)
     fmt = getattr(args, "format", None) or "json"
     if command == "prices":
@@ -415,8 +353,8 @@ def _estimate_online(args: argparse.Namespace) -> int:
         body = EstimateIn.model_validate(document)
     except ValidationError:
         raise DataError("invalid") from None
-    config = _config(args)
-    token = _admin_token(config) if body.method == "M7" else _query_token(config)
+    config = _resolved(args)
+    token = config.admin_token if body.method == "M7" else query_credential(config)
     status, response = ServiceClient(_server(args, config), token).json_map(
         "POST",
         "/v1/estimates",

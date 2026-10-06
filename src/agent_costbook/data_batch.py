@@ -2201,6 +2201,16 @@ def verify_receipt(receipt_path: Path, server: str, token: str, *, client: Servi
     }
 
 
+def _configured_admin_token(args: argparse.Namespace) -> str:
+    from agent_costbook.local import LocalError, load_cli_config
+
+    try:
+        config = load_cli_config(getattr(args, "config", None))
+    except LocalError as exc:
+        raise DataError(exc.code, exit_code=exc.exit_code) from None
+    return config.admin_token
+
+
 def run_data(args: argparse.Namespace) -> int:
     try:
         if args.data_command == "plan":
@@ -2210,14 +2220,14 @@ def run_data(args: argparse.Namespace) -> int:
             _emit(validate_batch(Path(args.batch)))
             return 0
         if args.data_command == "diff":
-            _emit(diff_batch(Path(args.batch), args.server, os.environ.get("ACB_ADMIN_TOKEN", "")))
+            _emit(diff_batch(Path(args.batch), args.server, _configured_admin_token(args)))
             return 0
         if args.data_command == "apply":
             result = apply_batch(
                 Path(args.batch),
                 args.approved_diff_sha256,
                 args.server,
-                os.environ.get("ACB_ADMIN_TOKEN", ""),
+                _configured_admin_token(args),
                 backup_source=Path(args.backup_source) if args.backup_source else None,
                 backup_destination=Path(args.backup_destination) if args.backup_destination else None,
                 backup_receipt=Path(args.backup_receipt) if args.backup_receipt else None,
@@ -2229,7 +2239,7 @@ def run_data(args: argparse.Namespace) -> int:
             result = verify_receipt(
                 Path(args.receipt),
                 args.server,
-                os.environ.get("ACB_ADMIN_TOKEN", ""),
+                _configured_admin_token(args),
             )
             exit_code = result.pop("exit_code")
             _emit(result)
@@ -2257,13 +2267,16 @@ def register(commands: argparse._SubParsersAction) -> None:
     diff = nested.add_parser("diff")
     diff.add_argument("--batch", required=True)
     diff.add_argument("--server", required=True)
+    diff.add_argument("--config")
     apply = nested.add_parser("apply")
     apply.add_argument("--batch", required=True)
     apply.add_argument("--approved-diff-sha256", required=True)
     apply.add_argument("--server", required=True)
+    apply.add_argument("--config")
     apply.add_argument("--backup-source")
     apply.add_argument("--backup-destination")
     apply.add_argument("--backup-receipt")
     verify = nested.add_parser("verify")
     verify.add_argument("--receipt", required=True)
     verify.add_argument("--server", required=True)
+    verify.add_argument("--config")
