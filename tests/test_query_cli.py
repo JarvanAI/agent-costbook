@@ -5,11 +5,11 @@ import threading
 from contextlib import contextmanager
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from types import SimpleNamespace
 from urllib.parse import parse_qs, urlsplit
 
 import pytest
 
+from agent_costbook.local import CliConfig, load_cli_config, query_credential
 from agent_costbook.query import estimate_online, register_query, run_query
 
 READ = "synthetic-read-token"
@@ -72,11 +72,17 @@ def served(respond):
 
 
 def _config(server="", read_token="", admin_token=""):
-    return SimpleNamespace(
-        db_path=None,
+    return CliConfig(
+        path=Path("config.json"),
+        exists=True,
+        version=1,
+        db_path=Path("costbook.sqlite3"),
+        configured_db_path=None,
         admin_token=admin_token,
         read_token=read_token,
         server=server,
+        source_db="config",
+        explicit_config=True,
     )
 
 
@@ -181,6 +187,16 @@ def _empty_catalog():
     }
 
 
+def _benchmark(name, score, unit, source="catalog page", source_ref=None):
+    return {
+        "name": name,
+        "score": score,
+        "unit": unit,
+        "source": source,
+        "source_ref": source_ref,
+    }
+
+
 def _efforts():
     return [
         {
@@ -188,7 +204,10 @@ def _efforts():
             "model": "openai/gpt-4o-mini",
             "effort": "low",
             "source": "catalog page",
-            "benchmarks": {"intelligence": "41", "coding": None},
+            "benchmarks": [
+                _benchmark("intelligence", "41", "point"),
+                _benchmark("coding", None, "point"),
+            ],
             "as_of": "2026-10-01T00:00:00Z",
             "row_version": 1,
         },
@@ -206,7 +225,7 @@ def _efforts():
             "model": "openai/gpt-4o-mini",
             "effort": "high",
             "source": "catalog page",
-            "benchmarks": {"intelligence": "55"},
+            "benchmarks": [_benchmark("intelligence", "55", "point")],
             "as_of": "2026-10-01T00:00:00Z",
             "row_version": 3,
         },
@@ -255,6 +274,8 @@ def test_query_module_uses_the_cli_config_helper():
         if isinstance(node, ast.ImportFrom) and node.module == "agent_costbook.local":
             imported.extend(alias.name for alias in node.names)
     assert {"load_cli_config", "query_credential", "LocalError"} <= set(imported)
+    assert "except ImportError" not in source
+    assert "type(exc).__name__" not in source
 
 
 def test_prices_filter_preserves_catalog_envelope_and_source(monkeypatch, capsys):
@@ -590,12 +611,79 @@ def test_table_prints_recorded_values_and_leaves_missing_cells_blank(monkeypatch
         )
         captured = capsys.readouterr()
         assert captured.err == ""
-        assert "intelligence=41" in captured.out
-        assert "intelligence=55" in captured.out
+        assert "intelligence=41 point" in captured.out
+        assert "intelligence=55 point" in captured.out
         assert "coding=0" not in captured.out
         assert "null" not in captured.out.lower()
         assert "\x1b" not in captured.out
         assert "catalog page red" in captured.out or "catalog page  red" in captured.out
+
+
+def test_benchmark_list_renders_name_score_unit_and_json_keeps_fields(monkeypatch, capsys):
+    benchmarks = [
+        _benchmark("coding\n\x1b[31mx", "0.00", "po\nint", source="bench-source-kept", source_ref="bench-ref-kept"),
+        _benchmark("intelligence", "90", "index", source="later-source"),
+        _benchmark("coding", None, "point", source="skipped-null"),
+    ]
+    row = {
+        "provider": "openai",
+        "model": "openai/gpt-4o-mini",
+        "effort": "low",
+        "source": "catalog page",
+        "as_of": "2026-10-01T00:00:00Z",
+        "benchmarks": benchmarks,
+    }
+
+    def respond(receipt):
+        return 200, row, []
+
+    with served(respond) as (base, _receipts):
+        _install_config(monkeypatch, server=base, read_token=READ)
+        assert (
+            run_query(
+                _query(
+                    "model-efforts",
+                    server=base,
+                    provider="openai",
+                    model="openai/gpt-4o-mini",
+                    effort="low",
+                    format="json",
+                )
+            )
+            == 0
+        )
+        document, err = _json_out(capsys)
+        assert err == ""
+        assert document["benchmarks"] == benchmarks
+        assert document["benchmarks"][0]["source"] == "bench-source-kept"
+        assert document["benchmarks"][0]["source_ref"] == "bench-ref-kept"
+        assert document["benchmarks"][1]["source_ref"] is None
+        assert (
+            run_query(
+                _query(
+                    "model-efforts",
+                    server=base,
+                    provider="openai",
+                    model="openai/gpt-4o-mini",
+                    effort="low",
+                    format="table",
+                )
+            )
+            == 0
+        )
+        captured = capsys.readouterr()
+        assert captured.err == ""
+        lines = captured.out.splitlines()
+        assert len(lines) == 2
+        header = lines[0].split("\t")
+        cells = dict(zip(header, lines[1].split("\t"), strict=True))
+        assert cells["benchmarks"] == "coding x=0.00 po int,intelligence=90 index"
+        assert cells["benchmarks"].index("coding x=0.00") < cells["benchmarks"].index("intelligence=90")
+        assert "coding=0" not in captured.out
+        assert "bench-source-kept" not in captured.out
+        assert "bench-ref-kept" not in captured.out
+        assert "later-source" not in captured.out
+        assert "\x1b" not in captured.out
 
 
 def test_server_priority_uses_argument_then_env_then_config(monkeypatch, capsys):
@@ -643,14 +731,13 @@ def test_default_server_is_loopback_8080(monkeypatch, capsys):
     assert captured.err == ""
 
 
-def test_simple_namespace_config_supplies_server_and_read_token(monkeypatch, capsys):
-    config = SimpleNamespace(db_path=None, admin_token="config-admin", read_token="config-read", server="")
-
+def test_cli_config_dataclass_supplies_server_and_read_token(monkeypatch, capsys):
     def respond(receipt):
         return 200, {"agents": [], "model_efforts": []}, []
 
     with served(respond) as (base, receipts):
-        config.server = base
+        config = _config(server=base, read_token="config-read", admin_token="config-admin")
+        assert isinstance(config, CliConfig)
         monkeypatch.setattr(
             "agent_costbook.query.load_cli_config",
             lambda config_path=None, db=None: config,
@@ -660,6 +747,30 @@ def test_simple_namespace_config_supplies_server_and_read_token(monkeypatch, cap
     captured = capsys.readouterr()
     assert "config-read" not in captured.err
     assert "config-admin" not in captured.err
+
+
+def test_real_cli_config_env_overrides_file_tokens(monkeypatch, tmp_path):
+    _isolate_config(monkeypatch, tmp_path)
+    config_path = tmp_path / "config.json"
+    _write_real_config(
+        config_path,
+        server="http://127.0.0.1:9",
+        admin=FILE_ADMIN,
+        read=FILE_READ,
+        db=tmp_path / "costbook.sqlite3",
+    )
+    loaded = load_cli_config(str(config_path))
+    assert isinstance(loaded, CliConfig)
+    assert loaded.read_token == FILE_READ
+    assert loaded.admin_token == FILE_ADMIN
+    assert query_credential(loaded) == FILE_READ
+    monkeypatch.setenv("ACB_READ_TOKEN", "")
+    monkeypatch.setenv("ACB_ADMIN_TOKEN", ENV_ADMIN)
+    loaded = load_cli_config(str(config_path))
+    assert loaded.read_token == ""
+    assert loaded.admin_token == ENV_ADMIN
+    assert loaded.server == "http://127.0.0.1:9"
+    assert query_credential(loaded) == ENV_ADMIN
 
 
 def test_local_config_error_prints_only_its_code(monkeypatch, capsys):
@@ -850,6 +961,12 @@ def test_invalid_estimate_request_exits_without_calling_the_server(monkeypatch, 
         broken.write_text("{", encoding="utf-8")
         assert estimate_online(_estimate_args(request=str(broken), server=base)) == 2
         captured = capsys.readouterr()
+        assert captured.err == "invalid\n"
+        raw = tmp_path / "bad-utf8.json"
+        raw.write_bytes(b"\xff\xfe{")
+        assert estimate_online(_estimate_args(request=str(raw), server=base)) == 2
+        captured = capsys.readouterr()
+        assert captured.out == ""
         assert captured.err == "invalid\n"
         assert receipts == []
 

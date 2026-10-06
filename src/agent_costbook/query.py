@@ -13,7 +13,7 @@ from urllib.parse import quote, urlencode
 from pydantic import ValidationError
 
 from agent_costbook.data_batch import DataError, ServiceClient, TransportError
-from agent_costbook.local import LocalError, load_cli_config, query_credential
+from agent_costbook.local import CliConfig, LocalError, load_cli_config, query_credential
 from agent_costbook.models import EstimateIn
 
 _DEFAULT_SERVER = "http://127.0.0.1:8080"
@@ -129,14 +129,18 @@ def _object_table(rows: list[dict], fields: tuple[str, ...]) -> tuple[list[str],
 
 
 def _benchmark_cell(value: object) -> str:
-    if not isinstance(value, dict):
+    if not isinstance(value, list):
         return ""
     parts = []
-    for key in sorted(value):
-        score = value[key]
-        if score is None:
+    for item in value:
+        if not isinstance(item, dict):
             continue
-        parts.append(f"{_cell(key)}={_cell(score)}")
+        name = _cell(item.get("name"))
+        score = _cell(item.get("score"))
+        if not name or not score:
+            continue
+        unit = _cell(item.get("unit"))
+        parts.append(f"{name}={score} {unit}" if unit else f"{name}={score}")
     return ",".join(parts)
 
 
@@ -236,7 +240,7 @@ def _prices(args: argparse.Namespace, server: str, fmt: str) -> int:
     return 0
 
 
-def _agents(args: argparse.Namespace, server: str, config: dict, fmt: str) -> int:
+def _agents(args: argparse.Namespace, server: str, config: CliConfig, fmt: str) -> int:
     token = query_credential(config)
     agent_id = getattr(args, "agent_id", None)
     if agent_id is not None:
@@ -258,7 +262,7 @@ def _effort_matches(row: dict, effort: str) -> bool:
     return value == effort
 
 
-def _model_efforts(args: argparse.Namespace, server: str, config: dict, fmt: str) -> int:
+def _model_efforts(args: argparse.Namespace, server: str, config: CliConfig, fmt: str) -> int:
     token = query_credential(config)
     provider = getattr(args, "provider", None)
     model = getattr(args, "model", None)
@@ -347,7 +351,7 @@ def _estimate_online(args: argparse.Namespace) -> int:
         raise DataError("invalid")
     try:
         document = json.loads(Path(request).read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeDecodeError, json.JSONDecodeError):
         raise DataError("invalid") from None
     try:
         body = EstimateIn.model_validate(document)
