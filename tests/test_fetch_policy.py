@@ -372,4 +372,4 @@ def test_dns_and_connect_errors_become_fetch_errors_within_a_deadline(monkeypatc
 
 def test_production_fetch_has_no_private_network_switch():
     assert "allow_private" not in inspect.signature(fetch_public).parameters
-    assert set(Settings.__dataclass_fields__) == {"db_path", "admin_token"}
+    assert set(Settings.__dataclass_fields__) == {"db_path", "admin_token", "read_token"}
