@@ -91,6 +91,91 @@ def _capability_conflict(exc: StoreError):
     raise exc
 
 
+def build_estimate_response(store: Store, body: EstimateIn, *, authorized: bool) -> dict:
+    """Select one frozen catalog revision and attach per-candidate results.
+
+    Callers decide whether capability rows are visible. The response keeps
+    ``record_snapshot_id`` for the local API; public callers remove it.
+    """
+    revision = store.revision_of(body.snapshot_id)
+    if body.snapshot_id is not None and revision is None:
+        raise HTTPException(status_code=404, detail="snapshot not found")
+    frozen_snapshot = f"snap-{revision}" if revision is not None else _FROZEN_EMPTY_SNAPSHOT
+    selections = [
+        store.select_record(
+            provider=candidate.provider,
+            channel=candidate.channel,
+            model=candidate.model,
+            effort=candidate.effort,
+            plan=candidate.plan,
+            feature_scope=candidate.feature_scope,
+            window_start=candidate.window_start,
+            window_end=candidate.window_end,
+            currency=body.currency,
+            snapshot_id=frozen_snapshot,
+        )
+        for candidate in body.candidates
+    ]
+    for selection in selections:
+        if selection.record is not None:
+            selection.record["source_retrieved_at"] = store.earliest_retrieved_at(
+                selection.record.get("evidence_ids") or []
+            )
+    scenario = body.scenario.model_dump() if body.scenario is not None else None
+    published = catalog_document(store, revision)
+    measurements = None
+    if body.method == "M7":
+        measurements = [
+            store.find_measurement(
+                provider=candidate.provider,
+                channel=candidate.channel,
+                model=candidate.model,
+                effort=candidate.effort,
+                plan=candidate.plan,
+                feature_scope=candidate.feature_scope,
+                currency=body.currency,
+                period_start=candidate.window_start,
+                period_end=candidate.window_end,
+                task_category=body.task_category,
+                acceptance=body.acceptance,
+            )
+            for candidate in body.candidates
+        ]
+    results = run_estimate(
+        method=body.method,
+        usage=body.usage,
+        extra_cost=body.extra_cost,
+        currency=body.currency,
+        scenario=scenario,
+        reference_candidate_id=body.reference_candidate_id,
+        candidates=[_candidate_dict(candidate) for candidate in body.candidates],
+        selections=selections,
+        measurements=measurements,
+        formula_set=published.get("formula_version"),
+    )
+    published.pop("records")
+    for result, candidate in zip(results, body.candidates, strict=True):
+        result["publisher_id"] = published["publisher_id"]
+        result["data_version"] = published["data_version"]
+        result["snapshot_id"] = published["snapshot_id"]
+        if authorized:
+            agent = store.agent_capability(candidate.agent_id) if candidate.agent_id else None
+            model_effort = store.model_effort(
+                candidate.provider,
+                candidate.model,
+                candidate.effort or None,
+            )
+        else:
+            agent = None
+            model_effort = None
+        result["capabilities"] = capability_view(
+            authorized=authorized,
+            agent=agent,
+            model_effort=model_effort,
+        )
+    return {**published, "results": results}
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or load_settings()
     store = Store(resolved.db_path)
@@ -283,85 +368,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             authorized = _authorized(resolved, authorization)
         else:
             authorized = _read_authorized(resolved, authorization)
-        revision = store.revision_of(body.snapshot_id)
-        if body.snapshot_id is not None and revision is None:
-            raise HTTPException(status_code=404, detail="snapshot not found")
-        frozen_snapshot = f"snap-{revision}" if revision is not None else _FROZEN_EMPTY_SNAPSHOT
-        selections = [
-            store.select_record(
-                provider=candidate.provider,
-                channel=candidate.channel,
-                model=candidate.model,
-                effort=candidate.effort,
-                plan=candidate.plan,
-                feature_scope=candidate.feature_scope,
-                window_start=candidate.window_start,
-                window_end=candidate.window_end,
-                currency=body.currency,
-                snapshot_id=frozen_snapshot,
-            )
-            for candidate in body.candidates
-        ]
-        for selection in selections:
-            if selection.record is not None:
-                selection.record["source_retrieved_at"] = store.earliest_retrieved_at(
-                    selection.record.get("evidence_ids") or []
-                )
-        scenario = body.scenario.model_dump() if body.scenario is not None else None
-        published = catalog_document(store, revision)
-        measurements = None
-        if body.method == "M7":
-            measurements = [
-                store.find_measurement(
-                    provider=candidate.provider,
-                    channel=candidate.channel,
-                    model=candidate.model,
-                    effort=candidate.effort,
-                    plan=candidate.plan,
-                    feature_scope=candidate.feature_scope,
-                    currency=body.currency,
-                    period_start=candidate.window_start,
-                    period_end=candidate.window_end,
-                    task_category=body.task_category,
-                    acceptance=body.acceptance,
-                )
-                for candidate in body.candidates
-            ]
-        results = run_estimate(
-            method=body.method,
-            usage=body.usage,
-            extra_cost=body.extra_cost,
-            currency=body.currency,
-            scenario=scenario,
-            reference_candidate_id=body.reference_candidate_id,
-            candidates=[_candidate_dict(candidate) for candidate in body.candidates],
-            selections=selections,
-            measurements=measurements,
-            formula_set=published.get("formula_version"),
-        )
-        published.pop("records")
-        for result, candidate in zip(results, body.candidates, strict=True):
-            result["publisher_id"] = published["publisher_id"]
-            result["data_version"] = published["data_version"]
-            result["snapshot_id"] = published["snapshot_id"]
-            if authorized:
-                agent = (
-                    store.agent_capability(candidate.agent_id) if candidate.agent_id else None
-                )
-                model_effort = store.model_effort(
-                    candidate.provider,
-                    candidate.model,
-                    candidate.effort or None,
-                )
-            else:
-                agent = None
-                model_effort = None
-            result["capabilities"] = capability_view(
-                authorized=authorized,
-                agent=agent,
-                model_effort=model_effort,
-            )
-        return {**published, "results": results}
+        return build_estimate_response(store, body, authorized=authorized)
 
     return app
 
