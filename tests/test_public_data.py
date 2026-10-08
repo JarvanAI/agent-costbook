@@ -492,7 +492,7 @@ def test_packaged_artifact_exposes_real_prices_and_independent_facts():
         assert opus["rates"]["uncached_input_per_million"] == "4"
         assert "cache_write_per_million" not in opus["rates"]
         gemini = by_model["google/gemini-3.8-flash"]
-        assert gemini["rates"]["cache_write_per_million"] == "0.0416666666666667"
+        assert gemini["rates"].get("cache_write_per_million") is None
         assert gemini["model"] != "google/gemini-4"
         effort = store.model_effort("openai", "openai/gpt-4o-mini", None)
         assert effort["context_length"] == 128000
@@ -510,7 +510,8 @@ def test_packaged_artifact_exposes_real_prices_and_independent_facts():
         assert store.model_effort("openai", "openai/gpt-6.1-sol", None) is None
         assert store.agent_capability("codex")["can_edit_files"] is True
         assert store.agent_capability("claude-code")["can_use_tools"] is True
-        assert store.agent_capability("cursor")["can_edit_files"] is None
+        assert store.agent_capability("cursor")["can_edit_files"] is True
+        assert store.agent_capability("gemini-cli")["can_edit_files"] is True
         assert store.agent_capability("grok-build") is None
         evidence = store.get_evidence(quote["evidence_ids"][0])
         assert RETRIEVED in evidence["content"] or evidence["retrieved_at"] == RETRIEVED
