@@ -1,0 +1,76 @@
+# VCS, worktrees, and harnesses
+.git
+.github
+.gitignore
+.gitattributes
+.worktree
+.worktree/**
+**/.worktree/**
+hgit
+hgit/**
+**/hgit/**
+
+# Private contracts, internal documentation, and non-runtime materials
+.docs
+.docs/**
+**/.docs/**
+docs
+tests
+examples
+skills
+deploy
+scripts
+
+# Environment and sensitive credential files
+.env
+.env.*
+*.env
+**/*.env
+*.pem
+**/*.pem
+*.key
+**/*.key
+
+# Generic data, private observations, and user data directories
+data
+data/**
+**/data/**
+
+# All SQL, SQLite, and database files across the workspace
+*.sql
+*.sqlite
+*.sqlite3
+*.db
+**/*.sql
+**/*.sqlite
+**/*.sqlite3
+**/*.db
+
+# Allow ONLY the exact public catalog SQLite database
+!src/agent_costbook/public_catalog/catalog.sqlite3
+
+# Python byte code and caches
+__pycache__
+*.py[cod]
+*$py.class
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+
+# Virtual environments
+.venv
+venv
+env
+ENV
+
+# Packaging and build artifacts
+build
+dist
+*.egg-info
+
+# Temporary files and logs
+*.log
+*.tmp
+tmp
