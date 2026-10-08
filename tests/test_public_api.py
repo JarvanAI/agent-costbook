@@ -423,7 +423,7 @@ def test_get_etag_matches_weak_list_and_star(client):
 
 @pytest.mark.parametrize(
     "snapshot_id",
-    ["internal", "snap-0", "snap-2", "snap-01", "latest"],
+    ["internal", "snap-0", "snap-2", "snap-01", "latest", pytest.param("snap-" + "9" * 4301, id="oversized-number")],
 )
 def test_unknown_or_internal_snapshot_is_not_found(client, published, snapshot_id):
     if snapshot_id == "internal":
@@ -870,6 +870,20 @@ def _property_names(schema) -> set[str]:
 def _success_schema(document, path, method):
     response = document["paths"][path][method]["responses"]["200"]
     return response["content"]["application/json"]["schema"]
+
+
+def test_openapi_documents_absent_catalog_and_safe_internal_errors(client, public_app, monkeypatch):
+    document = client.get("/openapi.json").json()
+    monkeypatch.setattr(public_app.state.store, "revision_of", lambda _snapshot: None)
+    info = client.get("/v1/info")
+    assert info.status_code == 200
+    assert info.json()["catalog"] == {"snapshot_id": None, "data_version": None, "content_sha256": None}
+    catalog_schema = document["components"]["schemas"]["PublicServiceInfo"]["properties"]["catalog"]
+    for field in info.json()["catalog"]:
+        assert {"type": "null"} in catalog_schema["properties"][field].get("anyOf", [])
+    for operation in document["paths"].values():
+        for spec in operation.values():
+            assert spec["responses"]["500"]["content"]["application/json"]["schema"] == {"$ref": "#/components/schemas/PublicErrorResponse"}
 
 
 def test_openapi_success_schemas_match_live_bodies(client, published):

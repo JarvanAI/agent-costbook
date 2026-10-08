@@ -1,6 +1,170 @@
 {
   "components": {
     "schemas": {
+      "BenchmarkIn": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "string"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Source Ref"
+          },
+          "unit": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "score",
+          "unit",
+          "source"
+        ],
+        "title": "BenchmarkIn",
+        "type": "object"
+      },
+      "PublicAgentCapability": {
+        "additionalProperties": false,
+        "properties": {
+          "agent_id": {
+            "maxLength": 160,
+            "minLength": 1,
+            "title": "Agent Id",
+            "type": "string"
+          },
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "can_edit_files": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Can Edit Files"
+          },
+          "can_use_tools": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Can Use Tools"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "input_output_shape": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Input Output Shape"
+          },
+          "recorded_at": {
+            "type": "string"
+          },
+          "row_version": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Ref"
+          },
+          "strengths": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Strengths"
+          },
+          "unsuitable": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unsuitable"
+          }
+        },
+        "required": [
+          "agent_id",
+          "source",
+          "source_ref",
+          "as_of",
+          "domain",
+          "strengths",
+          "unsuitable",
+          "can_edit_files",
+          "can_use_tools",
+          "input_output_shape",
+          "row_version",
+          "recorded_at"
+        ],
+        "title": "PublicAgentCapability",
+        "type": "object"
+      },
       "PublicCandidateIn": {
         "additionalProperties": false,
         "properties": {
@@ -95,6 +259,84 @@
         "title": "PublicCandidateIn",
         "type": "object"
       },
+      "PublicCapabilities": {
+        "additionalProperties": false,
+        "properties": {
+          "agents": {
+            "items": {
+              "$ref": "#/components/schemas/PublicAgentCapability"
+            },
+            "type": "array"
+          },
+          "content_sha256": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "agent-costbook.capabilities"
+            ],
+            "type": "string"
+          },
+          "model_efforts": {
+            "items": {
+              "$ref": "#/components/schemas/PublicModelEffort"
+            },
+            "type": "array"
+          },
+          "publisher_id": {
+            "type": "string"
+          },
+          "schema_version": {
+            "enum": [
+              1
+            ],
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "schema_version",
+          "publisher_id",
+          "content_sha256",
+          "agents",
+          "model_efforts"
+        ],
+        "type": "object"
+      },
+      "PublicCapabilityView": {
+        "additionalProperties": false,
+        "properties": {
+          "agent": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicAgentCapability"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "model_effort": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PublicModelEffort"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "agent",
+          "model_effort",
+          "status"
+        ],
+        "type": "object"
+      },
       "PublicErrorBody": {
         "additionalProperties": false,
         "properties": {
@@ -149,6 +391,124 @@
         },
         "required": [
           "error"
+        ],
+        "type": "object"
+      },
+      "PublicEstimate": {
+        "additionalProperties": false,
+        "properties": {
+          "conflicts": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "channel": {
+                  "type": "string"
+                },
+                "effort": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "feature_scope": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "plan": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "record_id": {
+                  "type": "string"
+                },
+                "variants": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "channel",
+                "effort",
+                "feature_scope",
+                "model",
+                "plan",
+                "provider",
+                "record_id",
+                "variants"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "content_sha256": {
+            "type": "string"
+          },
+          "cost_basis": {
+            "enum": [
+              "public-reference"
+            ],
+            "type": "string"
+          },
+          "data_version": {
+            "type": "integer"
+          },
+          "formula_version": {
+            "type": "string"
+          },
+          "freshness": {
+            "type": "null"
+          },
+          "kind": {
+            "enum": [
+              "agent-costbook.estimate"
+            ],
+            "type": "string"
+          },
+          "published_at": {
+            "type": "string"
+          },
+          "publisher_id": {
+            "type": "string"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/PublicEstimateResult"
+            },
+            "type": "array"
+          },
+          "schema_version": {
+            "enum": [
+              1
+            ],
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "schema_version",
+          "cost_basis",
+          "publisher_id",
+          "data_version",
+          "snapshot_id",
+          "published_at",
+          "formula_version",
+          "freshness",
+          "content_sha256",
+          "results"
         ],
         "type": "object"
       },
@@ -252,6 +612,1273 @@
         "title": "PublicEstimateIn",
         "type": "object"
       },
+      "PublicEstimateResult": {
+        "additionalProperties": false,
+        "properties": {
+          "assumptions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "candidate_id": {
+            "type": "string"
+          },
+          "capabilities": {
+            "$ref": "#/components/schemas/PublicCapabilityView"
+          },
+          "cost_basis": {
+            "enum": [
+              "public-reference"
+            ],
+            "type": "string"
+          },
+          "data_version": {
+            "type": "integer"
+          },
+          "error_code": {
+            "type": "string"
+          },
+          "formula_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "freshness": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "retrieved_at": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "stale": {
+                    "type": "null"
+                  }
+                },
+                "required": [
+                  "retrieved_at",
+                  "stale"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "method": {
+            "type": "string"
+          },
+          "metrics": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "missing_fields": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "publisher_id": {
+            "type": "string"
+          },
+          "quality_proxy": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "rate_provenance": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "snapshot_id": {
+            "type": "string"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "status": {
+            "type": "string"
+          },
+          "units": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "candidate_id",
+          "status",
+          "metrics",
+          "units",
+          "method",
+          "formula_version",
+          "snapshot_id",
+          "sources",
+          "assumptions",
+          "missing_fields",
+          "freshness",
+          "publisher_id",
+          "data_version",
+          "capabilities",
+          "cost_basis"
+        ],
+        "type": "object"
+      },
+      "PublicEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "collector_kind": {
+            "type": "string"
+          },
+          "collector_name": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "content_sha256": {
+            "type": "string"
+          },
+          "contribution_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "retrieved_at": {
+            "type": "string"
+          },
+          "source_kind": {
+            "type": "string"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "contribution_id",
+          "source_kind",
+          "source_url",
+          "collector_kind",
+          "collector_name",
+          "content",
+          "content_sha256",
+          "retrieved_at"
+        ],
+        "type": "object"
+      },
+      "PublicHealth": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "enum": [
+              "ok"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "PublicModelEffort": {
+        "additionalProperties": false,
+        "properties": {
+          "as_of": {
+            "title": "As Of",
+            "type": "string"
+          },
+          "benchmarks": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/BenchmarkIn"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Benchmarks"
+          },
+          "context_length": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Context Length"
+          },
+          "default_for_agents": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Default For Agents"
+          },
+          "effort": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effort"
+          },
+          "model": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Model",
+            "type": "string"
+          },
+          "provider": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Provider",
+            "type": "string"
+          },
+          "recorded_at": {
+            "type": "string"
+          },
+          "row_version": {
+            "minimum": 1,
+            "type": "integer"
+          },
+          "source": {
+            "title": "Source",
+            "type": "string"
+          },
+          "source_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Ref"
+          },
+          "suitable": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Suitable"
+          },
+          "unsuitable": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unsuitable"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "effort",
+          "source",
+          "source_ref",
+          "as_of",
+          "suitable",
+          "unsuitable",
+          "context_length",
+          "benchmarks",
+          "default_for_agents",
+          "row_version",
+          "recorded_at"
+        ],
+        "title": "PublicModelEffort",
+        "type": "object"
+      },
+      "PublicOpenAPIDocument": {
+        "additionalProperties": true,
+        "properties": {
+          "components": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "info": {
+            "additionalProperties": true,
+            "properties": {
+              "title": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "title",
+              "version"
+            ],
+            "type": "object"
+          },
+          "openapi": {
+            "type": "string"
+          },
+          "paths": {
+            "additionalProperties": true,
+            "type": "object"
+          }
+        },
+        "required": [
+          "openapi",
+          "info",
+          "paths"
+        ],
+        "type": "object"
+      },
+      "PublicReady": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "enum": [
+              "ready"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "PublicResearch": {
+        "additionalProperties": false,
+        "properties": {
+          "contribution_id": {
+            "type": "string"
+          },
+          "id": {
+            "type": "string"
+          },
+          "markdown": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "contribution_id",
+          "title",
+          "markdown"
+        ],
+        "type": "object"
+      },
+      "PublicServiceInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "access": {
+            "additionalProperties": false,
+            "properties": {
+              "admin_publication": {
+                "enum": [
+                  "reviewed-artifact"
+                ],
+                "type": "string"
+              },
+              "anonymous_read": {
+                "enum": [
+                  true
+                ],
+                "type": "boolean"
+              },
+              "remote_write": {
+                "enum": [
+                  false
+                ],
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "anonymous_read",
+              "remote_write",
+              "admin_publication"
+            ],
+            "type": "object"
+          },
+          "api_version": {
+            "enum": [
+              1
+            ],
+            "type": "integer"
+          },
+          "capabilities": {
+            "additionalProperties": false,
+            "properties": {
+              "agent_count": {
+                "type": "integer"
+              },
+              "content_sha256": {
+                "type": "string"
+              },
+              "model_effort_count": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "content_sha256",
+              "agent_count",
+              "model_effort_count"
+            ],
+            "type": "object"
+          },
+          "catalog": {
+            "additionalProperties": false,
+            "properties": {
+              "content_sha256": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "data_version": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "snapshot_id": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "snapshot_id",
+              "data_version",
+              "content_sha256"
+            ],
+            "type": "object"
+          },
+          "kind": {
+            "enum": [
+              "agent-costbook.service"
+            ],
+            "type": "string"
+          },
+          "limits": {
+            "additionalProperties": false,
+            "properties": {
+              "body_bytes": {
+                "enum": [
+                  65536
+                ],
+                "type": "integer"
+              },
+              "candidates": {
+                "enum": [
+                  64
+                ],
+                "type": "integer"
+              },
+              "requests": {
+                "enum": [
+                  60
+                ],
+                "type": "integer"
+              },
+              "scope": {
+                "enum": [
+                  "instance"
+                ],
+                "type": "string"
+              },
+              "window_seconds": {
+                "enum": [
+                  60
+                ],
+                "type": "integer"
+              }
+            },
+            "required": [
+              "body_bytes",
+              "candidates",
+              "requests",
+              "window_seconds",
+              "scope"
+            ],
+            "type": "object"
+          },
+          "profile": {
+            "enum": [
+              "public-reference"
+            ],
+            "type": "string"
+          },
+          "publisher_id": {
+            "type": "string"
+          },
+          "schema_version": {
+            "enum": [
+              1
+            ],
+            "type": "integer"
+          },
+          "service_version": {
+            "type": "string"
+          },
+          "usage_assumptions": {
+            "additionalProperties": false,
+            "properties": {
+              "supported": {
+                "enum": [
+                  false
+                ],
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "supported"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "kind",
+          "schema_version",
+          "api_version",
+          "service_version",
+          "profile",
+          "publisher_id",
+          "catalog",
+          "capabilities",
+          "access",
+          "limits",
+          "usage_assumptions"
+        ],
+        "type": "object"
+      },
+      "PublicSnapshot": {
+        "additionalProperties": false,
+        "properties": {
+          "conflicts": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "channel": {
+                  "type": "string"
+                },
+                "effort": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "feature_scope": {
+                  "type": "string"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "plan": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "record_id": {
+                  "type": "string"
+                },
+                "variants": {
+                  "items": {
+                    "additionalProperties": true,
+                    "type": "object"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "channel",
+                "effort",
+                "feature_scope",
+                "model",
+                "plan",
+                "provider",
+                "record_id",
+                "variants"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "content_sha256": {
+            "type": "string"
+          },
+          "data_version": {
+            "type": "integer"
+          },
+          "formula_version": {
+            "type": "string"
+          },
+          "freshness": {
+            "type": "null"
+          },
+          "kind": {
+            "enum": [
+              "agent-costbook.snapshot"
+            ],
+            "type": "string"
+          },
+          "published_at": {
+            "type": "string"
+          },
+          "publisher_id": {
+            "type": "string"
+          },
+          "records": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "assumptions": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "channel": {
+                  "type": "string"
+                },
+                "effort": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "missing_fields": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "model": {
+                  "type": "string"
+                },
+                "plan": {
+                  "type": "string"
+                },
+                "provider": {
+                  "type": "string"
+                },
+                "rates": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "billed_output_per_million": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "amount": {
+                                  "type": "string"
+                                },
+                                "currency": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "amount",
+                                "currency"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "cache_read_per_million": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "amount": {
+                                  "type": "string"
+                                },
+                                "currency": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "amount",
+                                "currency"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "cache_write_per_million": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "amount": {
+                                  "type": "string"
+                                },
+                                "currency": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "amount",
+                                "currency"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "tool_fee_per_call": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "amount": {
+                                  "type": "string"
+                                },
+                                "currency": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "amount",
+                                "currency"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "uncached_input_per_million": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "amount": {
+                                  "type": "string"
+                                },
+                                "currency": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "amount",
+                                "currency"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "uncached_input_per_million",
+                        "cache_read_per_million",
+                        "cache_write_per_million",
+                        "billed_output_per_million",
+                        "tool_fee_per_call"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "record_id": {
+                  "type": "string"
+                },
+                "research_id": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "scope": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "baseline_group": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "currency": {
+                      "type": "string"
+                    },
+                    "function": {
+                      "type": "string"
+                    },
+                    "period": {
+                      "type": "string"
+                    },
+                    "task_profile": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "window": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "end": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "start": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "start",
+                        "end"
+                      ],
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "function",
+                    "currency"
+                  ],
+                  "type": "object"
+                },
+                "sources": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "collector_kind": {
+                        "type": "string"
+                      },
+                      "collector_name": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "kind": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "retrieved_at": {
+                        "type": "string"
+                      },
+                      "source_url": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "id"
+                    ],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "subscription": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "B0": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "amount": {
+                                  "type": "string"
+                                },
+                                "currency": {
+                                  "type": "string"
+                                },
+                                "period": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "amount"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "C": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "amount": {
+                                  "type": "string"
+                                },
+                                "currency": {
+                                  "type": "string"
+                                },
+                                "period": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "amount"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "N": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "amount": {
+                                  "type": "string"
+                                },
+                                "currency": {
+                                  "type": "string"
+                                },
+                                "period": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "amount"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "N0": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "amount": {
+                                  "type": "string"
+                                },
+                                "currency": {
+                                  "type": "string"
+                                },
+                                "period": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "amount"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "P": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "amount": {
+                                  "type": "string"
+                                },
+                                "currency": {
+                                  "type": "string"
+                                },
+                                "period": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "amount"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "m": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "amount": {
+                                  "type": "string"
+                                },
+                                "currency": {
+                                  "type": "string"
+                                },
+                                "period": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "amount"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "u": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "amount": {
+                                  "type": "string"
+                                },
+                                "currency": {
+                                  "type": "string"
+                                },
+                                "period": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "amount"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "w": {
+                          "anyOf": [
+                            {
+                              "additionalProperties": false,
+                              "properties": {
+                                "amount": {
+                                  "type": "string"
+                                },
+                                "currency": {
+                                  "type": "string"
+                                },
+                                "period": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "amount"
+                              ],
+                              "type": "object"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        }
+                      },
+                      "required": [
+                        "P",
+                        "m",
+                        "N0",
+                        "B0",
+                        "u",
+                        "C",
+                        "w",
+                        "N"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "record_id",
+                "status",
+                "provider",
+                "channel",
+                "model",
+                "effort",
+                "plan",
+                "scope",
+                "rates",
+                "subscription",
+                "missing_fields",
+                "sources",
+                "assumptions",
+                "research_id"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "schema_version": {
+            "enum": [
+              1
+            ],
+            "type": "integer"
+          },
+          "snapshot_id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "schema_version",
+          "publisher_id",
+          "data_version",
+          "snapshot_id",
+          "published_at",
+          "formula_version",
+          "freshness",
+          "content_sha256",
+          "records"
+        ],
+        "type": "object"
+      },
       "ScenarioIn": {
         "additionalProperties": false,
         "properties": {
@@ -284,10 +1911,53 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PublicHealth"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Process is alive.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The public service failed."
           }
         },
         "summary": "Health"
@@ -300,10 +1970,71 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PublicOpenAPIDocument"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "This OpenAPI document.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The instance request limit was reached.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds remaining in the rate-limit window.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The public service failed."
           }
         },
         "summary": "Openapi"
@@ -316,10 +2047,63 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PublicReady"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Published catalog is ready.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The public service failed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The public catalog is not ready."
           }
         },
         "summary": "Ready"
@@ -332,10 +2116,71 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PublicCapabilities"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Public capability collection.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The instance request limit was reached.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds remaining in the rate-limit window.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The public service failed."
           }
         },
         "summary": "Capabilities"
@@ -361,10 +2206,53 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PublicAgentCapability"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "One public agent capability.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The resource was not found."
           },
           "422": {
             "content": {
@@ -374,7 +2262,35 @@
                 }
               }
             },
-            "description": "Invalid public request"
+            "description": "The request is invalid."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The instance request limit was reached.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds remaining in the rate-limit window.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The public service failed."
           }
         },
         "summary": "Agent"
@@ -428,10 +2344,53 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PublicModelEffort"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "One public model-effort capability.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The resource was not found."
           },
           "422": {
             "content": {
@@ -441,7 +2400,35 @@
                 }
               }
             },
-            "description": "Invalid public request"
+            "description": "The request is invalid."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The instance request limit was reached.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds remaining in the rate-limit window.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The public service failed."
           }
         },
         "summary": "Model Effort"
@@ -472,10 +2459,53 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PublicSnapshot"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Exported public snapshot.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The resource was not found."
           },
           "422": {
             "content": {
@@ -485,7 +2515,45 @@
                 }
               }
             },
-            "description": "Invalid public request"
+            "description": "The request is invalid."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The instance request limit was reached.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds remaining in the rate-limit window.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The public service failed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The public catalog is not ready."
           }
         },
         "summary": "Catalog"
@@ -508,10 +2576,50 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PublicEstimate"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Public reference estimate.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Estimates are not stored.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "Private measurement is unavailable."
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The resource was not found."
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The request body is too large."
           },
           "422": {
             "content": {
@@ -521,7 +2629,45 @@
                 }
               }
             },
-            "description": "Invalid public request"
+            "description": "The request is invalid."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The instance request limit was reached.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds remaining in the rate-limit window.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The public service failed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The public catalog is not ready."
           }
         },
         "summary": "Estimates"
@@ -547,10 +2693,53 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PublicEvidence"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Published linked evidence.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The resource was not found."
           },
           "422": {
             "content": {
@@ -560,7 +2749,35 @@
                 }
               }
             },
-            "description": "Invalid public request"
+            "description": "The request is invalid."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The instance request limit was reached.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds remaining in the rate-limit window.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The public service failed."
           }
         },
         "summary": "Evidence"
@@ -573,10 +2790,81 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PublicServiceInfo"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Public service descriptor.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The instance request limit was reached.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds remaining in the rate-limit window.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The public service failed."
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The public catalog is not ready."
           }
         },
         "summary": "Info"
@@ -602,10 +2890,53 @@
           "200": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PublicResearch"
+                }
               }
             },
-            "description": "Successful Response"
+            "description": "Published linked research.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "Not modified.",
+            "headers": {
+              "Cache-Control": {
+                "description": "Cache policy for this representation.",
+                "schema": {
+                  "type": "string"
+                }
+              },
+              "ETag": {
+                "description": "Quoted SHA-256 of the canonical JSON body.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The resource was not found."
           },
           "422": {
             "content": {
@@ -615,7 +2946,35 @@
                 }
               }
             },
-            "description": "Invalid public request"
+            "description": "The request is invalid."
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The instance request limit was reached.",
+            "headers": {
+              "Retry-After": {
+                "description": "Whole seconds remaining in the rate-limit window.",
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublicErrorResponse"
+                }
+              }
+            },
+            "description": "The public service failed."
           }
         },
         "summary": "Research"

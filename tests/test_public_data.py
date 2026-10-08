@@ -150,6 +150,30 @@ def _resign(db, manifest_path, **overrides):
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
 
+def test_update_cannot_silently_keep_a_price_removed_from_reviewed_source(tmp_path):
+    source = _mini_source()
+    previous, previous_manifest = _compile(source, tmp_path)
+    removed = source["prices"].pop()
+    source["exclusions"].append({"id": removed["model"], "reason": "New conditional pricing is not representable as a flat rate."})
+    with pytest.raises(PublicDataError) as error:
+        _compile(source, tmp_path, name="updated.sqlite3", update_from=previous)
+    assert error.value.code == "price_retirement_required"
+    assert not (tmp_path / "updated.sqlite3").exists()
+    assert validate_public_artifact(previous, previous_manifest)["coverage"]["prices"] == 2
+
+
+@pytest.mark.parametrize("collection", ["agents", "model_efforts"])
+def test_update_cannot_silently_keep_a_removed_capability(tmp_path, collection):
+    source = _mini_source()
+    previous, previous_manifest = _compile(source, tmp_path)
+    source[collection].clear()
+    with pytest.raises(PublicDataError) as error:
+        _compile(source, tmp_path, name="updated.sqlite3", update_from=previous)
+    assert error.value.code == "capability_retirement_required"
+    assert not (tmp_path / "updated.sqlite3").exists()
+    assert validate_public_artifact(previous, previous_manifest)["coverage"][collection] == 1
+
+
 def _edit(db, manifest_path, statement, params=()):
     connection = sqlite3.connect(db)
     connection.execute(statement, params)

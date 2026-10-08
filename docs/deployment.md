@@ -141,7 +141,7 @@ The public database is compiled into:
 * `src/agent_costbook/public_catalog/manifest.json`: File SHA256 (`database_sha256`), publisher ID, price data version, and coverage metadata.
 
 ### Updating the Catalog
-1. Edit or append verified public source facts in `src/agent_costbook/public_catalog/source.json`.
+1. Maintain the complete reviewed source collection: add or update verified public source facts in `src/agent_costbook/public_catalog/source.json`.
 2. Compile and validate the artifact using the catalog build script:
    ```bash
    uv run --locked python scripts/build-public-catalog.py \
@@ -153,6 +153,8 @@ The public database is compiled into:
    ```
 3. Review the source diff, coverage, exclusions and resulting publisher/versions. The output directory must be new: the builder refuses to overwrite published files. After approval, replace the package artifact with the checked output and commit the updated `catalog.sqlite3`, `manifest.json`, and `source.json`.
 4. Run repository checks and the real HTTP smoke, then publish a new image/deployment (for example `v1.2.1`). Keep the old image/deployment and artifact for rollback. Updating prices preserves publisher and history; capability-only changes preserve price version and change the capability hash.
+
+The builder supports additions and revised facts, not retirement. Removing an existing price or capability identity fails with `price_retirement_required` or `capability_retirement_required`; it does not silently keep an excluded old row. Explicit retirement needs a separate supported workflow. The original artifact and historical snapshots remain intact when an update fails.
 
 ### Backup
 * All source facts JSON files and compiled SQLite release artifacts are version-controlled in Git.

@@ -29,7 +29,7 @@ from agent_costbook.capabilities import AgentCapabilityIn, ModelEffortIn
 from agent_costbook.estimates import ALLOWED_USAGE, RATE_KEYS, parse_decimal
 from agent_costbook.export import ExportError, build_document
 from agent_costbook.models import EstimateIn, ScenarioIn
-from agent_costbook.store import Store, StoreError
+from agent_costbook.store import MAX_SAFE_INT, Store, StoreError
 
 PUBLIC_METHODS = ("M0", "M1", "M2", "M3", "M4", "M5", "M6")
 BODY_BYTES = 65536
@@ -241,7 +241,10 @@ def _public_revision(store: Store, snapshot_id: str | None) -> tuple[int, str]:
         if revision is None:
             raise PublicError(503, "not_ready", "The public catalog is not ready.")
         return int(revision), CURRENT_CACHE
-    if _PUBLIC_SNAPSHOT.fullmatch(snapshot_id) is None:
+    if (
+        _PUBLIC_SNAPSHOT.fullmatch(snapshot_id) is None
+        or len(snapshot_id.removeprefix("snap-")) > len(str(MAX_SAFE_INT))
+    ):
         raise PublicError(404, "snapshot_not_found", "Snapshot was not found.")
     revision = store.revision_of(snapshot_id)
     if revision is None:
@@ -713,9 +716,9 @@ def _public_components() -> dict[str, dict]:
                 "publisher_id": {"type": "string"},
                 "catalog": _object(
                     {
-                        "snapshot_id": {"type": "string"},
-                        "data_version": {"type": "integer"},
-                        "content_sha256": {"type": "string"},
+                        "snapshot_id": _nullable({"type": "string"}),
+                        "data_version": _nullable({"type": "integer"}),
+                        "content_sha256": _nullable({"type": "string"}),
                     },
                     ["snapshot_id", "data_version", "content_sha256"],
                 ),
@@ -1022,7 +1025,10 @@ def _public_openapi(app: FastAPI) -> dict:
             operation.pop("security", None)
             responses = documented.get((path, method))
             if responses is not None:
-                operation["responses"] = responses
+                operation["responses"] = {
+                    **responses,
+                    "500": _failure("The public service failed."),
+                }
             elif isinstance(operation.get("responses"), dict):
                 current = operation["responses"]
                 if "422" in current:

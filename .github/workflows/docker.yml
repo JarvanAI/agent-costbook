@@ -64,7 +64,7 @@ jobs:
 
       - name: Build OCI container image
         run: |
-          docker build -t agent-costbook:test .
+          docker build --label "org.opencontainers.image.source=$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" -t agent-costbook:test .
 
       - name: Run container in read-only mode for HTTP smoke test
         run: |

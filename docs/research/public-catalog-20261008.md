@@ -15,7 +15,7 @@
 | `database_sha256` | `a3af0ff91075301b8efbe3fe4ce48e9308872a609d5fb327f1bbd93b944fe9e2` |
 | schema | SQLite `user_version` 2，`journal_mode=DELETE`，无 WAL/SHM |
 | 覆盖 | 价格 17，Agent 5，model-effort 33 |
-| 排除 | 25 条，其中 12 条是无法表达的分档价格 |
+| 排除 | 23 条，其中 12 条是无法表达的分档价格 |
 | 公式 | `ac-formulas-v2`，`export_generation` 2 |
 
 价格身份是 `channel=openrouter`、`plan=payg`、`feature_scope=text`、`currency=USD`、`effort=""`。这些是 OpenRouter 通道标价，按原始每 token 价格用 `Decimal` 乘 `1000000` 得到每百万 token 的十进制字符串。未知费率保持 null。
@@ -97,4 +97,6 @@ Artificial Analysis 的数值分数没有入库。私有订阅、额度与账号
 
 Gemini 的缓存写入未纳入通用文本费率：[OpenRouter 缓存文档](https://openrouter.ai/docs/guides/best-practices/prompt-caching)区分隐式缓存与带存储时长的显式缓存。原始 API 字段仍留在 source.json 供核对，编译后的 cache_write 为空。首次未发行候选在父级复核后重新封存；尚未对外发布的候选 UUID 不构成已发布版本。今后更新必须保留正式 publisher 和历史。
 
-`uv run --locked pytest -q tests/test_public_data.py`：24 passed。
+`uv run --locked pytest -q tests/test_public_data.py`：27 passed。
+
+公开 source 是完整当前审核合集。更新不支持撤销：移除已有价格、Agent 或 model-effort 身份时分别拒绝为 `price_retirement_required` / `capability_retirement_required`，不静默继承旧条目或删除历史。明确撤销需另行实现；新增与改值仍保留原 publisher 和历史。

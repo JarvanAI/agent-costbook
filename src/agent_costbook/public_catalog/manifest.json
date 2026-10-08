@@ -48,14 +48,6 @@
       "reason": "https://x.ai/build returned HTTP 403 during review, so no grok-build agent row is published."
     },
     {
-      "id": "cursor-file-edit",
-      "reason": "The retrieved Cursor docs index does not state file editing, so can_edit_files is null."
-    },
-    {
-      "id": "gemini-file-write",
-      "reason": "The Gemini CLI readme lists file operations but does not say write or edit, so can_edit_files is null."
-    },
-    {
       "id": "openai/gpt-6.1-sol",
       "reason": "OpenRouter pricing.overrides changes token rates at 272000 prompt tokens. The record key cannot select that band, so no flat rate is published."
     },

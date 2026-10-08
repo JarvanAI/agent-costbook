@@ -66,6 +66,7 @@ def main():
     assert pinned == catalog and "immutable" in (pinned_headers.get("cache-control") or pinned_headers["Cache-Control"])
     request("unknown_snapshot", "/v1/catalog?snapshot_id=snap-999999999", expected=404)
     request("internal_snapshot", "/v1/catalog?snapshot_id=snap_not_public", expected=404)
+    request("oversized_snapshot", "/v1/catalog?snapshot_id=snap-" + "9" * 4301, expected=404)
     caps, _ = request("capabilities", "/v1/capabilities")
     assert caps["publisher_id"] == info["publisher_id"]
     assert caps["content_sha256"] == hashlib.sha256(canonical({"agents": caps["agents"], "model_efforts": caps["model_efforts"]})).hexdigest()
@@ -103,6 +104,10 @@ def main():
     openapi, _ = request("openapi", "/openapi.json")
     assert "private_rates" not in json.dumps(openapi) and "securitySchemes" not in openapi.get("components", {})
     assert "/v1/contributions" not in openapi["paths"]
+    for path, method in (("/v1/info", "get"), ("/v1/catalog", "get"), ("/v1/capabilities", "get"), ("/v1/estimates", "post")):
+        responses = openapi["paths"][path][method]["responses"]
+        assert responses["200"]["content"]["application/json"]["schema"]
+        assert "500" in responses
     if args.fixtures:
         args.fixtures.mkdir(parents=True, exist_ok=True)
         for name, fixture in fixtures.items():

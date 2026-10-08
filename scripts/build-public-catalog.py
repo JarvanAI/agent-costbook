@@ -134,6 +134,7 @@ def _preflight_prices(source: dict) -> None:
 
 
 def _apply(store: Store, source: dict) -> None:
+    _require_capability_identities(store, source)
     try:
         _publish_prices(store, source)
         _save_capabilities(store, source)
@@ -141,8 +142,29 @@ def _apply(store: Store, source: dict) -> None:
         raise PublicDataError("artifact_unreadable", "the public catalog could not be written") from None
 
 
+def _require_capability_identities(store: Store, source: dict) -> None:
+    current = store.current_capabilities()
+    agent_ids = {row["agent_id"] for row in source.get("agents") or []}
+    effort_key = lambda row: (row["provider"], row["model"], row.get("effort") or "")
+    effort_ids = {effort_key(row) for row in source.get("model_efforts") or []}
+    if (
+        {row["agent_id"] for row in current["agents"]} - agent_ids
+        or {effort_key(row) for row in current["model_efforts"]} - effort_ids
+    ):
+        raise PublicDataError(
+            "capability_retirement_required",
+            "the reviewed source omits a current capability; explicit retirement is not supported",
+        )
+
+
 def _publish_prices(store: Store, source: dict) -> None:
     current = {_identity(row): row for row in store.catalog(None)}
+    proposed = {_identity(_record(price, {})) for price in source["prices"]}
+    if current.keys() - proposed:
+        raise PublicDataError(
+            "price_retirement_required",
+            "the reviewed source omits a current price; explicit retirement is not supported",
+        )
     records = []
     for price in source["prices"]:
         rates = rates_from_raw(price["raw_pricing"], price.get("provider"))

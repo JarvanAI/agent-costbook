@@ -36,3 +36,13 @@
 - 内部snapshot ID404；公开估算无record_snapshot_id；缺当前snapshot503且能力仍可读取。currency未传422，private factory仍保持原行为。
 - SQLite单文件DELETE journal，观测/collector jobs/未发布贡献拒绝；capability表/schema/publisher/hash明确验证，无启动修复。
 - Docker80/8080由PORT显式校准；Vercel原生ASGI入口和依赖/资源打包验证，VCR有价不当作免费权益。
+
+## 2026-10-08 本地最终验收
+
+- Linux Python3.13.11：`uv run --locked pytest -q`，305 passed；新增public API54项、公开数据27项。旧private鉴权/M7/公式/CLI兼容检查包含在全套中。
+- `uv build` 生成1.2.0 wheel/sdist；安装包在无checkout/PYTHONPATH的目录独立启动public app，未混入嵌套私有SQLite。doc links和synthetic demo通过。
+- 真实本地HTTP与最终Docker实例各23检查；20份实际JSON响应通过标准JSON Schema校验。完整契约响应见[实际fixtures](../../../examples/public-service/README.md)，不是手拼或云端回执。
+- Docker Python3.12.15，UID10001、read-only/tmpfs、PORT9090。重启的publisher/版本/完整价格与能力行稳定，消费后数据库文件SHA不变，SIGTERM退出0。
+- 固定publisher `pub_008d3e8ddcc84a8a984064b9e1e3dd80`，snap-1/version1；价格hash `cdd4d50d966bd81d439914021d5afa1d0a028490304b7e7fd43ea55a11f8ad6f`，能力hash `52121452c81c8de536d8e9e9f9d189f7c90e063789db1c543e8f151f3aec41d2`，数据库file hash `a3af0ff91075301b8efbe3fe4ce48e9308872a609d5fb327f1bbd93b944fe9e2`。
+- Grok与Sol6.1独立复核；重要项OpenAPI成功合同、更新撤去身份静默继承已修并复核。撤销尚未实现，缺旧身份即拒绝更新；文档明确范围。
+- 云账户尚未授权，公网URL、免费账户适用性与远端冷启动验证未完成。
