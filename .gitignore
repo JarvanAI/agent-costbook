@@ -13,3 +13,4 @@ env/
 venv/
 *.sqlite3
 !tests/fixtures/ac-v0.2-sample.sqlite3
+!src/agent_costbook/public_catalog/catalog.sqlite3

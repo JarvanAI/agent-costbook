@@ -1,0 +1,875 @@
+{
+  "kind": "agent-costbook.public-source",
+  "schema_version": 1,
+  "reviewed_at": "2026-10-08T14:31:00+08:00",
+  "research": {
+    "title": "Reviewed public OpenRouter text rates, 2026-10-08",
+    "markdown": "First reviewed public snapshot. Human authorized this public-data boundary on 2026-10-08. Prices are OpenRouter channel metadata retrieved 2026-10-08T13:58:41+08:00, converted with Decimal times 1000000. They are not vendor-direct prices, paid invoices, or a license grant. Models whose token rates change by prompt length are listed as gaps. GPT-6.1 Sol effort names come from the OpenAI model page retrieved 2026-10-08T14:30:15+08:00 and have no price row. Benchmarks and private quotas are absent.\n"
+  },
+  "evidence": [
+    {
+      "source_kind": "reviewed_public",
+      "source_url": "https://openrouter.ai/api/v1/models",
+      "collector_kind": "manual_review",
+      "collector_name": "ac-public-catalog",
+      "content": "OpenRouter public models metadata retrieved 2026-10-08T13:58:41+08:00. Channel openrouter, plan payg, scope text, currency USD. Per-token strings were multiplied by 1000000 with Decimal. Long-context overrides and the one-hour cache-write TTL are not flat rates.",
+      "retrieved_at": "2026-10-08T13:58:41+08:00"
+    }
+  ],
+  "prices": [
+    {
+      "provider": "openai",
+      "model": "openai/gpt-5.4-mini",
+      "raw_pricing": {
+        "prompt": "0.00000075",
+        "completion": "0.0000045",
+        "web_search": "0.01",
+        "input_cache_read": "0.000000075"
+      },
+      "evidence_index": 0
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-5.2-codex",
+      "raw_pricing": {
+        "prompt": "0.00000175",
+        "completion": "0.000014",
+        "web_search": "0.01",
+        "input_cache_read": "0.000000175"
+      },
+      "evidence_index": 0
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-5.1-codex",
+      "raw_pricing": {
+        "prompt": "0.00000125",
+        "completion": "0.00001",
+        "web_search": "0.01",
+        "input_cache_read": "0.00000013"
+      },
+      "evidence_index": 0
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-5",
+      "raw_pricing": {
+        "prompt": "0.00000125",
+        "completion": "0.00001",
+        "web_search": "0.01",
+        "input_cache_read": "0.000000125"
+      },
+      "evidence_index": 0
+    },
+    {
+      "provider": "openai",
+      "model": "openai/o3",
+      "raw_pricing": {
+        "prompt": "0.000002",
+        "completion": "0.000008",
+        "web_search": "0.01",
+        "input_cache_read": "0.0000005"
+      },
+      "evidence_index": 0
+    },
+    {
+      "provider": "openai",
+      "model": "openai/o4-mini",
+      "raw_pricing": {
+        "prompt": "0.0000011",
+        "completion": "0.0000044",
+        "web_search": "0.01",
+        "input_cache_read": "0.000000275"
+      },
+      "evidence_index": 0
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-4o-mini",
+      "raw_pricing": {
+        "prompt": "0.00000015",
+        "completion": "0.0000006",
+        "input_cache_read": "0.000000075"
+      },
+      "evidence_index": 0
+    },
+    {
+      "provider": "anthropic",
+      "model": "anthropic/claude-opus-5.5",
+      "raw_pricing": {
+        "prompt": "0.000004",
+        "completion": "0.00002",
+        "web_search": "0.01",
+        "input_cache_read": "0.0000002",
+        "input_cache_write": "0.000005",
+        "input_cache_write_1h": "0.000008"
+      },
+      "evidence_index": 0
+    },
+    {
+      "provider": "anthropic",
+      "model": "anthropic/claude-sonnet-5.5",
+      "raw_pricing": {
+        "prompt": "0.000002",
+        "completion": "0.00001",
+        "web_search": "0.01",
+        "input_cache_read": "0.0000001",
+        "input_cache_write": "0.0000025",
+        "input_cache_write_1h": "0.000004"
+      },
+      "evidence_index": 0
+    },
+    {
+      "provider": "anthropic",
+      "model": "anthropic/claude-opus-5",
+      "raw_pricing": {
+        "prompt": "0.000005",
+        "completion": "0.000025",
+        "web_search": "0.01",
+        "input_cache_read": "0.0000005",
+        "input_cache_write": "0.00000625",
+        "input_cache_write_1h": "0.00001"
+      },
+      "evidence_index": 0
+    },
+    {
+      "provider": "anthropic",
+      "model": "anthropic/claude-sonnet-5",
+      "raw_pricing": {
+        "prompt": "0.000002",
+        "completion": "0.00001",
+        "web_search": "0.01",
+        "input_cache_read": "0.0000002",
+        "input_cache_write": "0.0000025",
+        "input_cache_write_1h": "0.000004"
+      },
+      "evidence_index": 0
+    },
+    {
+      "provider": "anthropic",
+      "model": "anthropic/claude-fable-5.1",
+      "raw_pricing": {
+        "prompt": "0.00001",
+        "completion": "0.00005",
+        "web_search": "0.01",
+        "input_cache_read": "0.00000025",
+        "input_cache_write": "0.0000125",
+        "input_cache_write_1h": "0.00002"
+      },
+      "evidence_index": 0
+    },
+    {
+      "provider": "google",
+      "model": "google/gemini-3.8-flash",
+      "raw_pricing": {
+        "prompt": "0.00000075",
+        "completion": "0.00000375",
+        "image": "0.00000075",
+        "audio": "0.00000075",
+        "input_audio_cache": "0.000000075",
+        "web_search": "0.014",
+        "internal_reasoning": "0.00000375",
+        "input_cache_read": "0.000000075",
+        "input_cache_write": "0.0000000416666666666667"
+      },
+      "evidence_index": 0
+    },
+    {
+      "provider": "google",
+      "model": "google/gemini-3.7-flash",
+      "raw_pricing": {
+        "prompt": "0.00000075",
+        "completion": "0.00000375",
+        "image": "0.00000075",
+        "audio": "0.00000075",
+        "input_audio_cache": "0.000000075",
+        "web_search": "0.014",
+        "internal_reasoning": "0.00000375",
+        "input_cache_read": "0.000000075",
+        "input_cache_write": "0.0000000416666666666667"
+      },
+      "evidence_index": 0
+    },
+    {
+      "provider": "google",
+      "model": "google/gemini-3.6-flash",
+      "raw_pricing": {
+        "prompt": "0.00000075",
+        "completion": "0.00000375",
+        "image": "0.00000075",
+        "audio": "0.00000075",
+        "input_audio_cache": "0.000000075",
+        "web_search": "0.014",
+        "internal_reasoning": "0.00000375",
+        "input_cache_read": "0.000000075",
+        "input_cache_write": "0.0000000416666666666667"
+      },
+      "evidence_index": 0
+    },
+    {
+      "provider": "google",
+      "model": "google/gemini-3.5-flash",
+      "raw_pricing": {
+        "prompt": "0.0000015",
+        "completion": "0.000009",
+        "image": "0.0000015",
+        "audio": "0.000003",
+        "input_audio_cache": "0.0000003",
+        "web_search": "0.014",
+        "internal_reasoning": "0.000009",
+        "input_cache_read": "0.00000015",
+        "input_cache_write": "0.0000000833333333333333"
+      },
+      "evidence_index": 0
+    },
+    {
+      "provider": "google",
+      "model": "google/gemini-3.5-flash-lite",
+      "raw_pricing": {
+        "prompt": "0.0000003",
+        "completion": "0.0000025",
+        "image": "0.0000003",
+        "audio": "0.0000003",
+        "input_audio_cache": "0.00000003",
+        "web_search": "0.014",
+        "internal_reasoning": "0.0000025",
+        "input_cache_read": "0.00000003",
+        "input_cache_write": "0.0000000833333333333333"
+      },
+      "evidence_index": 0
+    }
+  ],
+  "agents": [
+    {
+      "agent_id": "codex",
+      "source": "official",
+      "source_ref": "https://developers.openai.com/codex/cli",
+      "as_of": "2026-10-08T14:06:45+08:00",
+      "domain": "terminal coding agent",
+      "strengths": "The Codex CLI page says a repository session can edit files and run local development tools.",
+      "unsuitable": null,
+      "can_edit_files": true,
+      "can_use_tools": true,
+      "input_output_shape": "Terminal session in a repository; task text in, edits and command output out."
+    },
+    {
+      "agent_id": "claude-code",
+      "source": "official",
+      "source_ref": "https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview",
+      "as_of": "2026-10-08T14:01:06+08:00",
+      "domain": "agentic coding tool",
+      "strengths": "The Claude Code overview says it reads a codebase, edits files, and runs commands.",
+      "unsuitable": null,
+      "can_edit_files": true,
+      "can_use_tools": true,
+      "input_output_shape": "Terminal, IDE, desktop, and browser; prompt in, file edits and command results out."
+    },
+    {
+      "agent_id": "cursor",
+      "source": "official",
+      "source_ref": "https://docs.cursor.com/agent",
+      "as_of": "2026-10-08T14:02:02+08:00",
+      "domain": "coding agent",
+      "strengths": "The retrieved docs index describes Plan Mode, diff review, and MCP. It does not state file editing.",
+      "unsuitable": null,
+      "can_edit_files": null,
+      "can_use_tools": true,
+      "input_output_shape": "Docs index describes planning, diff review, and MCP. The edit surface is not stated."
+    },
+    {
+      "agent_id": "gemini-cli",
+      "source": "official",
+      "source_ref": "https://github.com/google-gemini/gemini-cli",
+      "as_of": "2026-10-08T14:03:10+08:00",
+      "domain": "terminal agent for Gemini",
+      "strengths": "The Gemini CLI readme lists built-in file operations, shell commands, and MCP. Write access is not explicit.",
+      "unsuitable": null,
+      "can_edit_files": null,
+      "can_use_tools": true,
+      "input_output_shape": "Terminal CLI; prompts in, file operations and shell commands out."
+    },
+    {
+      "agent_id": "antigravity",
+      "source": "official",
+      "source_ref": "https://antigravity.google/docs/overview",
+      "as_of": "2026-10-08T14:04:32+08:00",
+      "domain": "desktop agent command center",
+      "strengths": "The Antigravity 2.0 overview says agents write files, run system commands, and call MCP tools.",
+      "unsuitable": null,
+      "can_edit_files": true,
+      "can_use_tools": true,
+      "input_output_shape": "Desktop command center; prompts in, file writes, system commands, and artifacts out."
+    }
+  ],
+  "model_efforts": [
+    {
+      "provider": "openai",
+      "model": "openai/gpt-5.4-mini",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 400000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-5.2-codex",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 400000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-5.1-codex",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 400000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-5",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 400000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "openai",
+      "model": "openai/o3",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 200000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "openai",
+      "model": "openai/o4-mini",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 200000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-4o-mini",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 128000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "anthropic",
+      "model": "anthropic/claude-opus-5.5",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1000000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "anthropic",
+      "model": "anthropic/claude-sonnet-5.5",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1000000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "anthropic",
+      "model": "anthropic/claude-opus-5",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1000000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "anthropic",
+      "model": "anthropic/claude-sonnet-5",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1000000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "anthropic",
+      "model": "anthropic/claude-fable-5.1",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1000000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "google",
+      "model": "google/gemini-3.8-flash",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1048576,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "google",
+      "model": "google/gemini-3.7-flash",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1048576,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "google",
+      "model": "google/gemini-3.6-flash",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1048576,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "google",
+      "model": "google/gemini-3.5-flash",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1048576,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "google",
+      "model": "google/gemini-3.5-flash-lite",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1048576,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-6-sol",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1050000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-6-astra",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1050000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-5.6-sol",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1050000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-5.4",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1050000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "anthropic",
+      "model": "anthropic/claude-haiku-5.5",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1000000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "google",
+      "model": "google/gemini-3.1-pro-preview",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1048576,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "x-ai",
+      "model": "x-ai/grok-4.7",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 500000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "x-ai",
+      "model": "x-ai/grok-4.6",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 500000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "x-ai",
+      "model": "x-ai/grok-4.5",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 500000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "x-ai",
+      "model": "x-ai/grok-build-0.1",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 256000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "x-ai",
+      "model": "x-ai/grok-4.3",
+      "effort": null,
+      "source": "official",
+      "source_ref": "https://openrouter.ai/api/v1/models",
+      "as_of": "2026-10-08T13:58:41+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1000000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-6.1-sol",
+      "effort": "low",
+      "source": "official",
+      "source_ref": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+      "as_of": "2026-10-08T14:30:15+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1050000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-6.1-sol",
+      "effort": "medium",
+      "source": "official",
+      "source_ref": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+      "as_of": "2026-10-08T14:30:15+08:00",
+      "suitable": "OpenAI lists medium as the API default for this effort set.",
+      "unsuitable": null,
+      "context_length": 1050000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-6.1-sol",
+      "effort": "high",
+      "source": "official",
+      "source_ref": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+      "as_of": "2026-10-08T14:30:15+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1050000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-6.1-sol",
+      "effort": "xhigh",
+      "source": "official",
+      "source_ref": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+      "as_of": "2026-10-08T14:30:15+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1050000,
+      "benchmarks": null,
+      "default_for_agents": null
+    },
+    {
+      "provider": "openai",
+      "model": "openai/gpt-6.1-sol",
+      "effort": "max",
+      "source": "official",
+      "source_ref": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+      "as_of": "2026-10-08T14:30:15+08:00",
+      "suitable": null,
+      "unsuitable": null,
+      "context_length": 1050000,
+      "benchmarks": null,
+      "default_for_agents": null
+    }
+  ],
+  "sources": [
+    {
+      "id": "openrouter_models_api",
+      "url": "https://openrouter.ai/api/v1/models",
+      "retrieved_at": "2026-10-08T13:58:41+08:00"
+    },
+    {
+      "id": "openai_codex_cli",
+      "url": "https://developers.openai.com/codex/cli",
+      "retrieved_at": "2026-10-08T14:06:45+08:00"
+    },
+    {
+      "id": "openai_gpt_6_1_sol",
+      "url": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+      "retrieved_at": "2026-10-08T14:30:15+08:00"
+    },
+    {
+      "id": "openai_reasoning_guide",
+      "url": "https://developers.openai.com/api/docs/guides/reasoning",
+      "retrieved_at": "2026-10-08T14:07:25+08:00"
+    },
+    {
+      "id": "anthropic_claude_code",
+      "url": "https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview",
+      "retrieved_at": "2026-10-08T14:01:06+08:00"
+    },
+    {
+      "id": "cursor_docs",
+      "url": "https://docs.cursor.com/agent",
+      "retrieved_at": "2026-10-08T14:02:02+08:00"
+    },
+    {
+      "id": "gemini_cli",
+      "url": "https://github.com/google-gemini/gemini-cli",
+      "retrieved_at": "2026-10-08T14:03:10+08:00"
+    },
+    {
+      "id": "antigravity_overview",
+      "url": "https://antigravity.google/docs/overview",
+      "retrieved_at": "2026-10-08T14:04:32+08:00"
+    }
+  ],
+  "exclusions": [
+    {
+      "id": "license",
+      "reason": "Publication review is not a license grant for vendor page text or Artificial Analysis data."
+    },
+    {
+      "id": "channel",
+      "reason": "Stored rates are OpenRouter channel openrouter payg text USD quotes, not vendor-direct prices or measured invoices."
+    },
+    {
+      "id": "gemini4",
+      "reason": "No google/gemini-4 row exists in the retrieved models payload. Gemma 4 and Gemini 3.8 Flash are different ids and are not substituted."
+    },
+    {
+      "id": "aliases",
+      "reason": "Dated canonical_slug values are not separate prices: openai/gpt-5.4-mini -> openai/gpt-5.4-mini-20260317; openai/gpt-5.2-codex -> openai/gpt-5.2-codex-20260114; openai/gpt-5.1-codex -> openai/gpt-5.1-codex-20251113; openai/gpt-5 -> openai/gpt-5-2025-08-07; openai/o3 -> openai/o3-2025-04-16; openai/o4-mini -> openai/o4-mini-2025-04-16; anthropic/claude-opus-5.5 -> anthropic/claude-opus-5.5-20260921; anthropic/claude-sonnet-5.5 -> anthropic/claude-sonnet-5.5-20260928; anthropic/claude-opus-5 -> anthropic/claude-opus-5-20260723; anthropic/claude-sonnet-5 -> anthropic/claude-sonnet-5-20260630; anthropic/claude-fable-5.1 -> anthropic/claude-fable-5.1-20260831; google/gemini-3.8-flash -> google/gemini-3.8-flash-20260902; google/gemini-3.7-flash -> google/gemini-3.7-flash-20260813; google/gemini-3.6-flash -> google/gemini-3.6-flash-20260721; google/gemini-3.5-flash -> google/gemini-3.5-flash-20260519; google/gemini-3.5-flash-lite -> google/gemini-3.5-flash-lite-20260721; openai/gpt-6.1-sol -> openai/gpt-6.1-sol-20260929; openai/gpt-6-sol -> openai/gpt-6-sol-20260922; openai/gpt-6-astra -> openai/gpt-6-astra-20260903; openai/gpt-5.6-sol -> openai/gpt-5.6-sol-20260709; openai/gpt-5.4 -> openai/gpt-5.4-20260305; anthropic/claude-haiku-5.5 -> anthropic/claude-haiku-5.5-20261007; google/gemini-3.1-pro-preview -> google/gemini-3.1-pro-preview-20260219; x-ai/grok-4.7 -> x-ai/grok-4.7-20260916; x-ai/grok-4.6 -> x-ai/grok-4.6-20260810; x-ai/grok-4.5 -> x-ai/grok-4.5-20260708; x-ai/grok-build-0.1 -> x-ai/grok-build-0.1-20260520; x-ai/grok-4.3 -> x-ai/grok-4.3-20260430."
+    },
+    {
+      "id": "cache-write-ttl",
+      "reason": "Anthropic rows that publish both input_cache_write and input_cache_write_1h keep cache_write null. One field cannot name the TTL."
+    },
+    {
+      "id": "unmodeled-components",
+      "reason": "web_search, image, audio, input_audio_cache, and internal_reasoning fees are outside the text rate card and stay uncovered."
+    },
+    {
+      "id": "effort-prices",
+      "reason": "OpenRouter supported_efforts are not copied onto price rows. Named tiers are stored only for gpt-6.1-sol, from its OpenAI model page, and that model has no flat price."
+    },
+    {
+      "id": "aa-benchmarks",
+      "reason": "Artificial Analysis numeric benchmark scores stay out. Redistribution rights are not established."
+    },
+    {
+      "id": "private-quota",
+      "reason": "Private subscription, quota, and account observations are not in this snapshot."
+    },
+    {
+      "id": "grok-build-page",
+      "reason": "https://x.ai/build returned HTTP 403 during review, so no grok-build agent row is published."
+    },
+    {
+      "id": "cursor-file-edit",
+      "reason": "The retrieved Cursor docs index does not state file editing, so can_edit_files is null."
+    },
+    {
+      "id": "gemini-file-write",
+      "reason": "The Gemini CLI readme lists file operations but does not say write or edit, so can_edit_files is null."
+    },
+    {
+      "id": "openai/gpt-6.1-sol",
+      "reason": "OpenRouter pricing.overrides changes token rates at 272000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "openai/gpt-6-sol",
+      "reason": "OpenRouter pricing.overrides changes token rates at 272000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "openai/gpt-6-astra",
+      "reason": "OpenRouter pricing.overrides changes token rates at 272000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "openai/gpt-5.6-sol",
+      "reason": "OpenRouter pricing.overrides changes token rates at 272000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "openai/gpt-5.4",
+      "reason": "OpenRouter pricing.overrides changes token rates at 272000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "anthropic/claude-haiku-5.5",
+      "reason": "OpenRouter pricing.overrides changes token rates at 100000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "google/gemini-3.1-pro-preview",
+      "reason": "OpenRouter pricing.overrides changes token rates at 200000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "x-ai/grok-4.7",
+      "reason": "OpenRouter pricing.overrides changes token rates at 200000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "x-ai/grok-4.6",
+      "reason": "OpenRouter pricing.overrides changes token rates at 200000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "x-ai/grok-4.5",
+      "reason": "OpenRouter pricing.overrides changes token rates at 200000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "x-ai/grok-build-0.1",
+      "reason": "OpenRouter pricing.overrides changes token rates at 200000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "x-ai/grok-4.3",
+      "reason": "OpenRouter pricing.overrides changes token rates at 200000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    }
+  ]
+}

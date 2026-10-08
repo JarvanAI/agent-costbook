@@ -1,0 +1,154 @@
+{
+  "coverage": {
+    "agents": 5,
+    "model_efforts": 33,
+    "prices": 17
+  },
+  "data_version": 1,
+  "database_sha256": "40b6bb14a815e8f5ff792ec051aa026bb44658edb7fef8f246eaed50d0f9d6d2",
+  "exclusions": [
+    {
+      "id": "license",
+      "reason": "Publication review is not a license grant for vendor page text or Artificial Analysis data."
+    },
+    {
+      "id": "channel",
+      "reason": "Stored rates are OpenRouter channel openrouter payg text USD quotes, not vendor-direct prices or measured invoices."
+    },
+    {
+      "id": "gemini4",
+      "reason": "No google/gemini-4 row exists in the retrieved models payload. Gemma 4 and Gemini 3.8 Flash are different ids and are not substituted."
+    },
+    {
+      "id": "aliases",
+      "reason": "Dated canonical_slug values are not separate prices: openai/gpt-5.4-mini -> openai/gpt-5.4-mini-20260317; openai/gpt-5.2-codex -> openai/gpt-5.2-codex-20260114; openai/gpt-5.1-codex -> openai/gpt-5.1-codex-20251113; openai/gpt-5 -> openai/gpt-5-2025-08-07; openai/o3 -> openai/o3-2025-04-16; openai/o4-mini -> openai/o4-mini-2025-04-16; anthropic/claude-opus-5.5 -> anthropic/claude-opus-5.5-20260921; anthropic/claude-sonnet-5.5 -> anthropic/claude-sonnet-5.5-20260928; anthropic/claude-opus-5 -> anthropic/claude-opus-5-20260723; anthropic/claude-sonnet-5 -> anthropic/claude-sonnet-5-20260630; anthropic/claude-fable-5.1 -> anthropic/claude-fable-5.1-20260831; google/gemini-3.8-flash -> google/gemini-3.8-flash-20260902; google/gemini-3.7-flash -> google/gemini-3.7-flash-20260813; google/gemini-3.6-flash -> google/gemini-3.6-flash-20260721; google/gemini-3.5-flash -> google/gemini-3.5-flash-20260519; google/gemini-3.5-flash-lite -> google/gemini-3.5-flash-lite-20260721; openai/gpt-6.1-sol -> openai/gpt-6.1-sol-20260929; openai/gpt-6-sol -> openai/gpt-6-sol-20260922; openai/gpt-6-astra -> openai/gpt-6-astra-20260903; openai/gpt-5.6-sol -> openai/gpt-5.6-sol-20260709; openai/gpt-5.4 -> openai/gpt-5.4-20260305; anthropic/claude-haiku-5.5 -> anthropic/claude-haiku-5.5-20261007; google/gemini-3.1-pro-preview -> google/gemini-3.1-pro-preview-20260219; x-ai/grok-4.7 -> x-ai/grok-4.7-20260916; x-ai/grok-4.6 -> x-ai/grok-4.6-20260810; x-ai/grok-4.5 -> x-ai/grok-4.5-20260708; x-ai/grok-build-0.1 -> x-ai/grok-build-0.1-20260520; x-ai/grok-4.3 -> x-ai/grok-4.3-20260430."
+    },
+    {
+      "id": "cache-write-ttl",
+      "reason": "Anthropic rows that publish both input_cache_write and input_cache_write_1h keep cache_write null. One field cannot name the TTL."
+    },
+    {
+      "id": "unmodeled-components",
+      "reason": "web_search, image, audio, input_audio_cache, and internal_reasoning fees are outside the text rate card and stay uncovered."
+    },
+    {
+      "id": "effort-prices",
+      "reason": "OpenRouter supported_efforts are not copied onto price rows. Named tiers are stored only for gpt-6.1-sol, from its OpenAI model page, and that model has no flat price."
+    },
+    {
+      "id": "aa-benchmarks",
+      "reason": "Artificial Analysis numeric benchmark scores stay out. Redistribution rights are not established."
+    },
+    {
+      "id": "private-quota",
+      "reason": "Private subscription, quota, and account observations are not in this snapshot."
+    },
+    {
+      "id": "grok-build-page",
+      "reason": "https://x.ai/build returned HTTP 403 during review, so no grok-build agent row is published."
+    },
+    {
+      "id": "cursor-file-edit",
+      "reason": "The retrieved Cursor docs index does not state file editing, so can_edit_files is null."
+    },
+    {
+      "id": "gemini-file-write",
+      "reason": "The Gemini CLI readme lists file operations but does not say write or edit, so can_edit_files is null."
+    },
+    {
+      "id": "openai/gpt-6.1-sol",
+      "reason": "OpenRouter pricing.overrides changes token rates at 272000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "openai/gpt-6-sol",
+      "reason": "OpenRouter pricing.overrides changes token rates at 272000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "openai/gpt-6-astra",
+      "reason": "OpenRouter pricing.overrides changes token rates at 272000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "openai/gpt-5.6-sol",
+      "reason": "OpenRouter pricing.overrides changes token rates at 272000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "openai/gpt-5.4",
+      "reason": "OpenRouter pricing.overrides changes token rates at 272000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "anthropic/claude-haiku-5.5",
+      "reason": "OpenRouter pricing.overrides changes token rates at 100000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "google/gemini-3.1-pro-preview",
+      "reason": "OpenRouter pricing.overrides changes token rates at 200000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "x-ai/grok-4.7",
+      "reason": "OpenRouter pricing.overrides changes token rates at 200000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "x-ai/grok-4.6",
+      "reason": "OpenRouter pricing.overrides changes token rates at 200000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "x-ai/grok-4.5",
+      "reason": "OpenRouter pricing.overrides changes token rates at 200000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "x-ai/grok-build-0.1",
+      "reason": "OpenRouter pricing.overrides changes token rates at 200000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "x-ai/grok-4.3",
+      "reason": "OpenRouter pricing.overrides changes token rates at 200000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    }
+  ],
+  "kind": "agent-costbook.publication",
+  "publisher_id": "pub_be58824dab79454fa9760104ad277f01",
+  "reviewed": true,
+  "reviewed_at": "2026-10-08T14:31:00+08:00",
+  "schema_version": 1,
+  "sources": [
+    {
+      "id": "openrouter_models_api",
+      "retrieved_at": "2026-10-08T13:58:41+08:00",
+      "url": "https://openrouter.ai/api/v1/models"
+    },
+    {
+      "id": "openai_codex_cli",
+      "retrieved_at": "2026-10-08T14:06:45+08:00",
+      "url": "https://developers.openai.com/codex/cli"
+    },
+    {
+      "id": "openai_gpt_6_1_sol",
+      "retrieved_at": "2026-10-08T14:30:15+08:00",
+      "url": "https://developers.openai.com/api/docs/models/gpt-6.1-sol"
+    },
+    {
+      "id": "openai_reasoning_guide",
+      "retrieved_at": "2026-10-08T14:07:25+08:00",
+      "url": "https://developers.openai.com/api/docs/guides/reasoning"
+    },
+    {
+      "id": "anthropic_claude_code",
+      "retrieved_at": "2026-10-08T14:01:06+08:00",
+      "url": "https://docs.anthropic.com/en/docs/agents-and-tools/claude-code/overview"
+    },
+    {
+      "id": "cursor_docs",
+      "retrieved_at": "2026-10-08T14:02:02+08:00",
+      "url": "https://docs.cursor.com/agent"
+    },
+    {
+      "id": "gemini_cli",
+      "retrieved_at": "2026-10-08T14:03:10+08:00",
+      "url": "https://github.com/google-gemini/gemini-cli"
+    },
+    {
+      "id": "antigravity_overview",
+      "retrieved_at": "2026-10-08T14:04:32+08:00",
+      "url": "https://antigravity.google/docs/overview"
+    }
+  ]
+}
