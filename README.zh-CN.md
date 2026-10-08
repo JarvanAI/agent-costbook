@@ -4,9 +4,24 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-**agent-costbook**（`ac`）是一个本地账本与估算服务，用于记录和管理具有可追溯来源的 AI 模型价格、订阅输入、证据与 model-effort（模型与思考量档位）能力事实，提供可复现的任务成本估算（M0–M7）与能力数据查询。
+**agent-costbook**（`ac`）提供公开参考服务与本地账本，用于记录和管理具有可追溯来源的 AI 模型价格、订阅输入、证据与 model-effort（模型与思考量档位）能力事实，提供可复现的任务成本估算（M0–M7）与能力数据查询。
 
 `ac` 最初为 [agent-router](https://github.com/JarvanAI/agent-router)（`ar`）设计，用于提供可验证的价格与能力事实依据：由 `ac` 维护来源证据、时间戳与估算公式，由 `ar` 做出路由决策；`ac` 亦可独立于 `ar` 供任何开发者工作流或 Agent 框架使用。所有事实均包含明确的新鲜度元数据（`retrieved_at`、`as_of`、`row_version`），未知费率显式呈现为 `null` 而非零，计算过程坦诚汇报缺失字段与假设，不作无依据推断。
+
+## 公共 HTTP 服务（1.2）
+
+AR 可以直接通过 HTTP 读取事实，无需安装 AC、CLI 或消费 key。管理员在本地调研与审核；线上只读，不执行 AI，不存模型 API key。私人实付价与剩余额度保留在用户的 AR。
+
+公网 URL 尚未部署。可从源码运行同一公开入口：
+
+```sh
+uv sync --locked
+uv run uvicorn agent_costbook.public_api:create_public_app --factory --host 127.0.0.1 --port 8080 --no-access-log
+curl --fail http://127.0.0.1:8080/v1/info
+curl --fail http://127.0.0.1:8080/v1/capabilities
+```
+
+公开库覆盖 17 条 OpenRouter 通道报价、5 个 Agent、33 条 model-effort。返回 `public-reference`，不代表个人实付；缺 usage 不猜测。12 个模型的条件价暂未纳入计算，AA 数值与私有配额不随包公开。见[公开契约](docs/design/public-service-1.2/spec.md)、[真实来源与缺项](docs/research/public-catalog-20261008.md)、[Docker 与部署](docs/deployment.md)。本地管理服务仍支持原有鉴权与 M0–M7；公共服务只开放 M0–M6。
 
 ## 安装
 
@@ -141,35 +156,13 @@ ac data verify --receipt batch-dir/receipt.json --server http://127.0.0.1:8080
 ## 架构与工作流
 
 ```mermaid
-flowchart TD
-    subgraph Sources ["数据与事实来源"]
-        P["公开官方文档与 OpenRouter"]
-        C["社区贡献与评测观察"]
-        H["人工 / 外部 Agent 调研"]
-    end
-
-    subgraph AC ["agent-costbook (ac)"]
-        DB[("本地 SQLite 数据库<br/>(价格、证据、能力行)")]
-        Snap["离线价格快照文件<br/>(snap-N, JSON)"]
-        API["本地 HTTP API<br/>(只读凭据查能力；管理凭据可写)"]
-    end
-
-    subgraph Consumers ["消费者与决策端"]
-        AR["agent-router (ar)<br/>(选择 Agent、模型与 effort)"]
-        EXT["其他 Agent 工具 / CLI"]
-    end
-
-    P -->|ac collect / 批次计划| DB
-    C -->|skills/costbook-contribute| DB
-    H -->|skills/costbook-initialize| DB
-
-    DB -->|agent-costbook-export| Snap
-    DB <-->|HTTP /v1/capabilities<br/>HTTP /v1/estimates| API
-
-    Snap -->|ac estimate (离线估算)| AR
-    API -->|HTTP 查询 (能力与估算)| AR
-    Snap --> EXT
-    API --> EXT
+flowchart LR
+    S["Official sources / external research"] --> A["Local administrator review"]
+    A --> P["Reviewed SQLite + manifest"]
+    P --> H["Anonymous public HTTP / Docker"]
+    H --> R["AR: Agent / model / effort decisions"]
+    R --> L["Private prices, quota and assets stay local"]
+    P --> O["Other HTTP consumers"]
 ```
 
 ---
@@ -179,7 +172,7 @@ flowchart TD
 | 能力 / 领域 | 状态 | 说明 |
 | --- | --- | --- |
 | 可追溯价格、证据与研究 Markdown | 已支持 | 保存在 SQLite 中；证据与研究文本通过 `/v1/evidence/{id}`、`/v1/research/{id}` 读取 |
-| 能力目录（Agent 与 model-effort） | 已支持 | 通过 `ACB_READ_TOKEN` 或 `ACB_ADMIN_TOKEN` 读取；通过 `ACB_ADMIN_TOKEN` 写入 |
+| 能力目录（Agent 与 model-effort；公共服务匿名读，本地管理服务鉴权） | 已支持 | 通过 `ACB_READ_TOKEN` 或 `ACB_ADMIN_TOKEN` 读取；通过 `ACB_ADMIN_TOKEN` 写入 |
 | 本地 CLI 查询命令 | 已支持 | `ac query prices`、`agents`、`model-efforts`、`evidence`、`research` 支持 JSON 与表格展示 |
 | 成本估算公式（M0–M7） | 已支持 | `ac-formulas-v2` 支持 M0–M7；M7 需要授权观察数据，旧快照支持较少方法 |
 | 离线价格快照估算 | 已支持 | 通过 `ac estimate --snapshot` 在本地直接计算，无需服务后台与网络 |

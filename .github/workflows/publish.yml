@@ -84,7 +84,7 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" dist/* \
             --title "agent-costbook $GITHUB_REF_NAME" \
-            --notes-file docs/releases/developer-experience-1.1.md \
+            --notes-file "docs/releases/${GITHUB_REF_NAME#v}.md" \
             --verify-tag
 
   pypi-publish:

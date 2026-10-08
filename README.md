@@ -4,9 +4,24 @@
 
 [English](README.md) · [简体中文](README.zh-CN.md)
 
-**agent-costbook** (`ac`) is a local ledger and calculation service for traceable AI model pricing, subscription terms, provenance evidence, and model-effort capability facts. It calculates reproducible task cost estimates (M0–M7) and provides factual capability records for AI agents.
+**agent-costbook** (`ac`) provides a public reference service and a local ledger for traceable AI model pricing, subscription terms, provenance evidence, and model-effort capability facts. It calculates reproducible task cost estimates (M0–M7) and provides factual capability records for AI agents.
 
 Originally built to serve [agent-router](https://github.com/JarvanAI/agent-router) (`ar`) with verifiable pricing and capability facts—where `ac` maintains the evidence, timestamps, and estimate formulas while `ar` makes routing decisions—`ac` runs independently for any developer workflow or agent framework. All facts carry explicit freshness provenance (`retrieved_at`, `as_of`, `row_version`), unknown rates are exposed as `null` rather than zero, and calculations report assumptions explicitly without guessing.
+
+## Public HTTP service (1.2)
+
+AR can consume facts directly over HTTP, without installing AC, a CLI, or a consumer key. Administrators research and review locally; the public service is read-only, runs no AI, and stores no model API keys. Personal paid prices and remaining quota stay in the user's AR.
+
+A public URL is not deployed yet. Run the same public entrypoint from a source checkout:
+
+```sh
+uv sync --locked
+uv run uvicorn agent_costbook.public_api:create_public_app --factory --host 127.0.0.1 --port 8080 --no-access-log
+curl --fail http://127.0.0.1:8080/v1/info
+curl --fail http://127.0.0.1:8080/v1/capabilities
+```
+
+The reviewed artifact covers 17 OpenRouter price cards, 5 agents, and 33 model-effort rows. Estimates are `public-reference`, not personal paid costs; missing usage is never guessed. Conditional prices for 12 models remain gaps. AA scores and private quotas are excluded. See the [public contract](docs/design/public-service-1.2/spec.md), [sources and gaps](docs/research/public-catalog-20261008.md), and [Docker deployment](docs/deployment.md). The local admin service retains authentication and M0–M7; the public service exposes M0–M6.
 
 ## Installation
 
@@ -141,35 +156,13 @@ See the [Catalog maintenance guide](docs/guides/catalog-maintenance.md) and [cos
 ## Architecture and Workflow
 
 ```mermaid
-flowchart TD
-    subgraph Sources ["Data & Fact Sources"]
-        P["Public documentation & OpenRouter"]
-        C["Community & benchmark observations"]
-        H["Human / External Agent research"]
-    end
-
-    subgraph AC ["agent-costbook (ac)"]
-        DB[("Local SQLite Database<br/>(rates, evidence, capabilities)")]
-        Snap["Offline Price Snapshot File<br/>(snap-N, JSON)"]
-        API["Local HTTP API<br/>(read token for queries; admin token for writes)"]
-    end
-
-    subgraph Consumers ["Consumers & Decision Makers"]
-        AR["agent-router (ar)<br/>(decides Agent, model, effort)"]
-        EXT["Other Agent Frameworks / CLI"]
-    end
-
-    P -->|ac collect / batch plan| DB
-    C -->|skills/costbook-contribute| DB
-    H -->|skills/costbook-initialize| DB
-
-    DB -->|agent-costbook-export| Snap
-    DB <-->|HTTP /v1/capabilities<br/>HTTP /v1/estimates| API
-
-    Snap -->|ac estimate (offline)| AR
-    API -->|HTTP query (capabilities & estimates)| AR
-    Snap --> EXT
-    API --> EXT
+flowchart LR
+    S["Official sources / external research"] --> A["Local administrator review"]
+    A --> P["Reviewed SQLite + manifest"]
+    P --> H["Anonymous public HTTP / Docker"]
+    H --> R["AR: Agent / model / effort decisions"]
+    R --> L["Private prices, quota and assets stay local"]
+    P --> O["Other HTTP consumers"]
 ```
 
 ---

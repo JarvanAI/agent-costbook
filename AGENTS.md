@@ -4,6 +4,10 @@
 
 ## 文档
 
+- [公共服务契约](docs/design/public-service-1.2/spec.md) / [验证](docs/design/public-service-1.2/test.md) / [执行计划](docs/design/public-service-1.2/exec-plan.md)：1.2 匿名 HTTP、独立审核库与边界
+- [部署与更新](docs/deployment.md)：Docker、免费托管前置、不可变发布与回滚
+- [首份公开目录](docs/research/public-catalog-20261008.md)：真实来源、价格条件与排除项
+
 - [README.md](README.md) / [README.zh-CN.md](README.zh-CN.md)：定位、ac/ar 关系、上手示例与支持范围
 - [docs/getting-started.md](docs/getting-started.md)：快速上手、单命令服务与诊断、基础查询与估算
 - [docs/guides/agent-integration.md](docs/guides/agent-integration.md)：外部 Agent、Router 与框架接入规范与约定
@@ -27,6 +31,9 @@
 研究笔记描述公开来源和现有字段。代码仓库的许可证不覆盖 Artificial Analysis 的数据。笔记里的分数示例不是一份可再分发的数据集。
 
 ## 仓库里的约定
+
+- 公共服务入口 `agent_costbook.public_api:create_public_app`，只读独立审核公开库。线上没有写 API、AI 或模型 key。不能把私有 live DB 切成公开模式。个人实付价、账号余额与本机资产属于 AR，不上传 AC。
+- `src/agent_costbook/public_catalog/catalog.sqlite3` 是唯一可公开打包的 SQLite；其他库仍保持忽略。更新复制上一正式公开库并保留 publisher/历史，运行时与镜像构建不重新生成数据。
 
 - 按 README 运行服务和 `uv run pytest -q`。
 - 密钥放在未跟踪的本地环境文件里，不写入仓库。

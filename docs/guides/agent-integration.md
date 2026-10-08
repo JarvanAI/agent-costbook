@@ -4,6 +4,12 @@ This guide explains how autonomous agents, routing systems (such as `agent-route
 
 ---
 
+## Public HTTP integration (recommended for AR)
+
+Use the [public contract](../design/public-service-1.2/spec.md) over HTTP; no checkout, CLI or consumer credential is required. `GET /v1/info` identifies API/schema/service versions and independent price/capability hashes. `GET /v1/capabilities` works without usage; `POST /v1/estimates` requires currency, forbids private overrides, and marks each result `public-reference`. Keep personal paid prices, quota, assets and task text in AR. Missing usage remains missing.
+
+No public base URL is deployed yet. The [deployment guide](../deployment.md) runs the exact local public app. The remaining authenticated examples describe the separate local administrator service and synthetic demo, not requests to the public profile.
+
 ## Architecture and boundary
 
 ```mermaid

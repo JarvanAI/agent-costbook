@@ -21,6 +21,10 @@ Public design and research notes live in `docs/design/` and `docs/research/`.
 
 ---
 
+## Public reference profile
+
+The independent public factory is `agent_costbook.public_api:create_public_app`. It anonymously serves a reviewed immutable catalog, capability facts, and M0–M6 estimates. Its contract and private-field exclusions differ from the local administrator API below. See the [public specification](design/public-service-1.2/spec.md) and [deployment guide](deployment.md). No public URL has been deployed yet.
+
 ## Local commands and service lifecycle
 
 ### `ac demo`
