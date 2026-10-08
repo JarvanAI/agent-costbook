@@ -1,9 +1,8 @@
 """Anonymous public-reference HTTP API.
 
-Artifact checks belong to ``public_data.validate_public_artifact`` and packaged
-defaults to ``public_data.default_public_paths``. Until that module exists, an
-explicit database and manifest still open readonly; the manifest is only parsed
-as a JSON object.
+Startup always calls ``public_data.validate_public_artifact``. Packaged
+defaults come from ``public_data.default_public_paths``. A missing helper or
+a rejected artifact stops startup.
 """
 
 from __future__ import annotations
@@ -15,7 +14,6 @@ import re
 import threading
 import time
 from collections import deque
-from collections.abc import Mapping
 from pathlib import Path
 from typing import Annotated
 
@@ -25,13 +23,14 @@ from fastapi.openapi.utils import get_openapi
 from fastapi.responses import Response
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from agent_costbook import __version__ as SERVICE_VERSION
 from agent_costbook.api import build_estimate_response
 from agent_costbook.estimates import ALLOWED_USAGE, parse_decimal
 from agent_costbook.export import ExportError, build_document
 from agent_costbook.models import EstimateIn, ScenarioIn
 from agent_costbook.store import Store, StoreError
 
-SERVICE_VERSION = "1.2.0"
+PUBLIC_METHODS = ("M0", "M1", "M2", "M3", "M4", "M5", "M6")
 BODY_BYTES = 65536
 MAX_CANDIDATES = 64
 REQUESTS_PER_WINDOW = 60
@@ -97,6 +96,7 @@ class PublicCandidateIn(BaseModel):
 
 class PublicEstimateIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
+    # Kept as a string so raw HTTP M7 is classified as 403 before the M0–M6 check.
     method: str = Field(min_length=1, max_length=16)
     snapshot_id: str | None = None
     currency: str = Field(min_length=1, max_length=12)
@@ -204,8 +204,8 @@ def _resolve_paths(
     if db_path is None and manifest_path is None:
         try:
             from agent_costbook.public_data import default_public_paths
-        except ImportError as exc:
-            raise PublicArtifactError("packaged public data is not available") from exc
+        except ImportError:
+            raise PublicArtifactError("public artifact is not available") from None
         packaged_db, packaged_manifest = default_public_paths()
         return Path(packaged_db), Path(packaged_manifest)
     if db_path is None or manifest_path is None:
@@ -215,38 +215,23 @@ def _resolve_paths(
 
 def _load_manifest(db_path: Path, manifest_path: Path) -> dict:
     try:
-        from agent_costbook import public_data
+        from agent_costbook.public_data import PublicDataError, validate_public_artifact
     except ImportError:
-        return _read_manifest_file(manifest_path)
-    validate_public_artifact = getattr(public_data, "validate_public_artifact", None)
-    if validate_public_artifact is None:
-        raise PublicArtifactError("public artifact validator is not available")
-    manifest = validate_public_artifact(db_path, manifest_path)
-    if not isinstance(manifest, dict):
-        raise PublicArtifactError("public artifact validator returned an invalid manifest")
-    return manifest
-
-
-def _read_manifest_file(path: Path) -> dict:
+        raise PublicArtifactError("public artifact is not available") from None
     try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
-        raise PublicArtifactError("public manifest is not available") from exc
-    if not isinstance(payload, Mapping):
-        raise PublicArtifactError("public manifest is not available")
-    return dict(payload)
+        manifest = validate_public_artifact(db_path, manifest_path)
+    except PublicDataError:
+        raise PublicArtifactError("public artifact is not available") from None
+    if not isinstance(manifest, dict):
+        raise PublicArtifactError("public artifact is not available")
+    return manifest
 
 
 def _open_store(db_path: Path) -> Store:
     try:
-        store = Store(db_path, readonly=True)
-    except StoreError as exc:
-        raise PublicArtifactError("public database is not available") from exc
-    # Read-only startup checks open a deferred transaction. Release it so a
-    # request does not keep a stale snapshot or a shared lock.
-    store._conn.commit()
-    store._conn.isolation_level = None
-    return store
+        return Store(db_path, readonly=True)
+    except StoreError:
+        raise PublicArtifactError("public database is not available") from None
 
 
 def _public_revision(store: Store, snapshot_id: str | None) -> tuple[int, str]:
@@ -467,6 +452,74 @@ class PublicGuard:
         await self.app(scope, receive, send)
 
 
+def _public_openapi(app: FastAPI) -> dict:
+    schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
+    schema.pop("security", None)
+    components = schema.get("components")
+    if not isinstance(components, dict):
+        components = {}
+        schema["components"] = components
+    components.pop("securitySchemes", None)
+    schemas = components.setdefault("schemas", {})
+    estimate = schemas.get("PublicEstimateIn")
+    if isinstance(estimate, dict):
+        properties = estimate.get("properties")
+        method = properties.get("method") if isinstance(properties, dict) else None
+        if isinstance(method, dict):
+            method["enum"] = list(PUBLIC_METHODS)
+    schemas.pop("HTTPValidationError", None)
+    schemas.pop("ValidationError", None)
+    schemas["PublicErrorBody"] = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["code", "message"],
+        "properties": {
+            "code": {"type": "string"},
+            "message": {"type": "string"},
+            "details": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "required": ["type", "loc"],
+                    "properties": {
+                        "type": {"type": "string"},
+                        "loc": {
+                            "type": "array",
+                            "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]},
+                        },
+                    },
+                },
+            },
+        },
+    }
+    schemas["PublicErrorResponse"] = {
+        "type": "object",
+        "additionalProperties": False,
+        "required": ["error"],
+        "properties": {"error": {"$ref": "#/components/schemas/PublicErrorBody"}},
+    }
+    invalid = {
+        "description": "Invalid public request",
+        "content": {
+            "application/json": {
+                "schema": {"$ref": "#/components/schemas/PublicErrorResponse"}
+            }
+        },
+    }
+    for path_item in schema.get("paths", {}).values():
+        if not isinstance(path_item, dict):
+            continue
+        for operation in path_item.values():
+            if not isinstance(operation, dict):
+                continue
+            operation.pop("security", None)
+            responses = operation.get("responses")
+            if isinstance(responses, dict) and "422" in responses:
+                responses["422"] = invalid
+    return schema
+
+
 def create_public_app(
     db_path: str | Path | None = None,
     manifest_path: str | Path | None = None,
@@ -503,6 +556,13 @@ def create_public_app(
                 _validation_details(exc.errors()),
             ),
             status=422,
+        )
+
+    @app.exception_handler(Exception)
+    async def unexpected_failure(_request: Request, _exc: Exception) -> Response:
+        return _json_response(
+            _error_payload("internal_error", "The public service failed."),
+            status=500,
         )
 
     @app.get("/health")
@@ -593,6 +653,13 @@ def create_public_app(
                 "private_measurement_unavailable",
                 "Private measured estimates are not available.",
             )
+        if body.method not in PUBLIC_METHODS:
+            raise PublicError(
+                422,
+                "invalid_public_request",
+                "The request is invalid.",
+                details=[{"type": "enum", "loc": ["body", "method"]}],
+            )
         _public_revision(store, body.snapshot_id)
         try:
             estimate = EstimateIn.model_validate(body.model_dump())
@@ -609,15 +676,7 @@ def create_public_app(
     @app.get("/openapi.json")
     def openapi(request: Request) -> Response:
         if app.openapi_schema is None:
-            schema = get_openapi(
-                title=app.title,
-                version=app.version,
-                routes=app.routes,
-            )
-            components = schema.get("components")
-            if isinstance(components, dict):
-                components.pop("securitySchemes", None)
-            app.openapi_schema = schema
+            app.openapi_schema = _public_openapi(app)
         return _cached_json(request, app.openapi_schema, CURRENT_CACHE)
 
     @app.get("/{path:path}", include_in_schema=False)

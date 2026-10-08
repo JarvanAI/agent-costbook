@@ -1,22 +1,29 @@
 import asyncio
 import hashlib
+import importlib.util
 import json
+import sqlite3
 import sys
-import types
 from decimal import Decimal
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+from agent_costbook import __version__
 from agent_costbook.api import create_app
 from agent_costbook.export import build_document
-from agent_costbook.public_api import PublicArtifactError, create_public_app
+from agent_costbook.public_api import PUBLIC_METHODS, PublicArtifactError, create_public_app
 from agent_costbook.settings import Settings
 from agent_costbook.store import Store
-from support import synthetic_contribution
+from support import SYNTHETIC_RATES
 
 AS_OF = "2026-09-27T00:00:00+00:00"
+RETRIEVED = "2026-09-25T00:00:00+00:00"
+MODEL = "m4-card"
+NEXT_MODEL = "m4-next"
+OFFICIAL_PRICE = "https://official.test/prices/m4-card"
+UNLINKED_MARKER = "unlinked-review-marker-7f3c"
 SECRET = "priv-echo-7f3c9a"
 USAGE = {
     "uncached_input": "1000",
@@ -59,7 +66,7 @@ def _candidate(candidate_id="known", **extra) -> dict:
         "candidate_id": candidate_id,
         "provider": "example",
         "channel": "api",
-        "model": "synthetic-m4",
+        "model": MODEL,
         "effort": "",
         "plan": "payg",
         "feature_scope": "text",
@@ -80,112 +87,191 @@ def _estimate(**overrides) -> dict:
     return body
 
 
-def _agent(agent_id: str, **overrides) -> dict:
-    body = {
-        "agent_id": agent_id,
-        "expected_version": 0,
-        "source": "official",
-        "source_ref": f"https://example.test/{agent_id}",
-        "as_of": AS_OF,
-        "domain": None,
-        "strengths": f"strength-{agent_id}",
-        "unsuitable": None,
-        "can_edit_files": True,
-        "can_use_tools": False,
-        "input_output_shape": None,
-    }
-    body.update(overrides)
-    return body
+def _compiler():
+    path = Path(__file__).resolve().parents[1] / "scripts" / "build-public-catalog.py"
+    spec = importlib.util.spec_from_file_location("build_public_catalog", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.compile_public_catalog
 
 
-def _effort(effort: str | None, **overrides) -> dict:
-    body = {
-        "provider": "example",
-        "model": "synthetic-m4",
-        "effort": effort,
-        "expected_version": 0,
-        "source": "official",
-        "source_ref": "https://example.test/effort",
-        "as_of": AS_OF,
-        "suitable": "null tier" if not effort else "named tier",
-        "unsuitable": None,
-        "context_length": None,
-        "benchmarks": None,
-        "default_for_agents": None,
-    }
-    body.update(overrides)
-    return body
-
-
-def _contribution(model: str = "synthetic-m4", *, unlinked: bool = False) -> dict:
-    payload = synthetic_contribution()
-    payload["records"][0]["model"] = model
-    payload["research"]["title"] = f"Synthetic card {model}"
-    payload["evidence"][0]["source_url"] = f"fixture://{model}"
-    if unlinked:
-        payload["evidence"].append(
+def _source(models: tuple[str, ...]) -> dict:
+    """Small reviewed fixture. Price numbers are the original synthetic card."""
+    return {
+        "kind": "agent-costbook.public-source",
+        "schema_version": 1,
+        "reviewed_at": AS_OF,
+        "research": {
+            "title": "Reviewed public rate card",
+            "markdown": (
+                "Original fixture price facts for the public API tests. "
+                "Not a provider quote.\n"
+            ),
+        },
+        "evidence": [
             {
-                "source_kind": "synthetic_fixture",
-                "source_url": "fixture://unlinked",
-                "collector_kind": "test",
-                "collector_name": "pytest",
-                "content": "unlinked-evidence-secret-7f3c",
-                "retrieved_at": "2026-09-25T00:00:00+00:00",
+                "source_kind": "reviewed_public",
+                "source_url": OFFICIAL_PRICE,
+                "collector_kind": "manual_review",
+                "collector_name": "ac-public-fixture",
+                "content": "Reviewed public rate card for the owned API fixture.",
+                "retrieved_at": RETRIEVED,
+            },
+            {
+                "source_kind": "reviewed_public",
+                "source_url": "https://official.test/prices/unlinked",
+                "collector_kind": "manual_review",
+                "collector_name": "ac-public-fixture",
+                "content": UNLINKED_MARKER,
+                "retrieved_at": RETRIEVED,
+            },
+        ],
+        "prices": [
+            {
+                "provider": "example",
+                "channel": "api",
+                "model": model,
+                "plan": "payg",
+                "feature_scope": "text",
+                "currency": "USD",
+                "evidence_index": 0,
+                "raw_pricing": {
+                    "prompt": "0.000002",
+                    "completion": "0.000008",
+                    "input_cache_read": "0.0000005",
+                    "input_cache_write": "0.000003",
+                },
             }
-        )
-    return payload
+            for model in models
+        ],
+        "agents": [
+            {
+                "agent_id": "agent-b",
+                "source": "official",
+                "source_ref": "https://official.test/agents/agent-b",
+                "as_of": AS_OF,
+                "strengths": "strength-agent-b",
+                "can_edit_files": True,
+                "can_use_tools": False,
+            },
+            {
+                "agent_id": "agent-a",
+                "source": "official",
+                "source_ref": "https://official.test/agents/agent-a",
+                "as_of": AS_OF,
+                "strengths": "strength-agent-a",
+                "can_edit_files": True,
+                "can_use_tools": False,
+            },
+        ],
+        "model_efforts": [
+            {
+                "provider": "zeta",
+                "model": "other",
+                "effort": "low",
+                "source": "official",
+                "source_ref": "https://official.test/efforts/other",
+                "as_of": AS_OF,
+                "suitable": "other tier",
+                "benchmarks": None,
+                "default_for_agents": None,
+            },
+            {
+                "provider": "example",
+                "model": MODEL,
+                "effort": None,
+                "source": "official",
+                "source_ref": "https://official.test/efforts/m4-card",
+                "as_of": AS_OF,
+                "suitable": "null tier",
+                "benchmarks": None,
+                "default_for_agents": None,
+            },
+            {
+                "provider": "example",
+                "model": MODEL,
+                "effort": "low",
+                "source": "official",
+                "source_ref": "https://official.test/efforts/m4-card",
+                "as_of": AS_OF,
+                "suitable": "named tier",
+                "benchmarks": None,
+                "default_for_agents": None,
+            },
+        ],
+        "sources": [
+            {
+                "id": "official_test_rate_card",
+                "url": OFFICIAL_PRICE,
+                "retrieved_at": RETRIEVED,
+            }
+        ],
+        "exclusions": [
+            {
+                "id": "private_guard",
+                "reason": "Private observations and credentials stay out of this reviewed fixture.",
+            }
+        ],
+    }
 
 
-def _manifest(path: Path) -> None:
-    path.write_text(
-        json.dumps({"publisher_id": "pub_test", "role": "explicit-fixture"}),
-        encoding="utf-8",
-    )
+def _unlinked_evidence_id(database: Path, linked: set[str]) -> str:
+    connection = sqlite3.connect(f"{database.resolve().as_uri()}?mode=ro", uri=True)
+    connection.row_factory = sqlite3.Row
+    try:
+        rows = connection.execute("SELECT id, source_url FROM evidence").fetchall()
+    finally:
+        connection.close()
+    for row in rows:
+        if row["id"] not in linked and str(row["source_url"]).endswith("/unlinked"):
+            return row["id"]
+    raise AssertionError("reviewed fixture is missing unlinked evidence")
 
 
-def _prepare(directory: Path, *, versions: int = 1, capabilities: bool = True) -> dict:
+def _prepare(directory: Path, *, versions: int = 1) -> dict:
+    compile_public_catalog = _compiler()
     database = directory / "public.sqlite3"
-    manifest = directory / "manifest.json"
-    store = Store(database)
-    created = []
-    published = []
-    for index, model in enumerate(("synthetic-m4", "synthetic-next")[:versions]):
-        body, _ = store.create_contribution(
-            _contribution(model, unlinked=index == 0),
-            None,
+    manifest_path = directory / "manifest.json"
+    if versions == 1:
+        compile_public_catalog(_source((MODEL,)), database, manifest_path)
+    else:
+        base = directory / "base.sqlite3"
+        compile_public_catalog(
+            _source((MODEL,)),
+            base,
+            directory / "base.manifest.json",
         )
-        created.append(body)
-        published.append(store.publish(body["contribution_id"]))
-    if capabilities:
-        store.save_agent_capability(_agent("agent-b"))
-        store.save_agent_capability(_agent("agent-a"))
-        store.save_model_effort(
-            _effort(
-                "low",
-                provider="zeta",
-                model="other",
-                suitable="other tier",
-            )
+        compile_public_catalog(
+            _source((NEXT_MODEL,)),
+            database,
+            manifest_path,
+            update_from=base,
         )
-        store.save_model_effort(
-            _effort(
-                None,
-                benchmarks=[
-                    {"name": "zeta", "score": "2", "unit": "point", "source": "official"},
-                    {"name": "alpha", "score": "1", "unit": "point", "source": "official"},
-                ],
-            )
-        )
-        store.save_model_effort(_effort("low"))
-    publisher = store.publisher_id()
-    store.close()
-    _manifest(manifest)
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["kind"] == "agent-costbook.publication"
+    assert manifest["schema_version"] == 1
+    assert manifest["reviewed"] is True
+    assert manifest["sources"][0]["url"] == OFFICIAL_PRICE
+    assert manifest["exclusions"][0]["id"] == "private_guard"
+    store = Store(database, readonly=True)
+    try:
+        current = store.catalog(None)
+        linked: set[str] = set()
+        for row in current:
+            linked.update(row["evidence_ids"])
+        primary = next(row for row in current if row["model"] == MODEL)
+        assert primary["rates"] == SYNTHETIC_RATES
+        publisher = store.publisher_id()
+    finally:
+        store.close()
     return {
         "db": database,
-        "manifest": manifest,
-        "created": created,
-        "published": published,
+        "manifest": manifest_path,
         "publisher_id": publisher,
+        "linked_evidence_id": primary["evidence_ids"][0],
+        "unlinked_evidence_id": _unlinked_evidence_id(database, linked),
+        "research_id": primary["research_id"],
+        "record_snapshot_id": primary["snapshot_id"],
     }
 
 
@@ -229,32 +315,47 @@ def client(public_app):
 
 def test_absent_packaged_data_does_not_invent_a_database(monkeypatch):
     monkeypatch.setitem(sys.modules, "agent_costbook.public_data", None)
-    with pytest.raises(PublicArtifactError):
+    with pytest.raises(PublicArtifactError, match="public artifact is not available"):
         create_public_app()
 
 
-def test_explicit_fixture_opens_when_validator_module_is_absent(published, monkeypatch):
+def test_missing_validator_does_not_parse_an_explicit_manifest(published, monkeypatch):
     monkeypatch.setitem(sys.modules, "agent_costbook.public_data", None)
+    published["manifest"].write_text("{not-json private-body-marker}", encoding="utf-8")
     before = hashlib.sha256(published["db"].read_bytes()).hexdigest()
-    app = create_public_app(published["db"], published["manifest"])
-    with TestClient(app) as client:
-        assert client.get("/health").status_code == 200
-        assert client.get("/v1/info").json()["publisher_id"] == published["publisher_id"]
+    with pytest.raises(PublicArtifactError, match="public artifact is not available") as caught:
+        create_public_app(published["db"], published["manifest"])
+    assert "private-body-marker" not in str(caught.value)
     assert hashlib.sha256(published["db"].read_bytes()).hexdigest() == before
     assert not Path(str(published["db"]) + "-wal").exists()
     assert not Path(str(published["db"]) + "-shm").exists()
 
 
-def test_validator_rejection_stops_startup(published, monkeypatch):
-    module = types.ModuleType("agent_costbook.public_data")
+def test_validator_rejection_is_sanitized(published, monkeypatch):
+    from agent_costbook.public_data import PublicDataError
 
     def validate_public_artifact(db_path, manifest_path):
-        raise RuntimeError("mixed publisher")
+        del db_path
+        leaked = Path(manifest_path).read_text(encoding="utf-8")
+        raise PublicDataError("source_rejected", leaked)
 
-    module.validate_public_artifact = validate_public_artifact
-    monkeypatch.setitem(sys.modules, "agent_costbook.public_data", module)
-    with pytest.raises(RuntimeError, match="mixed publisher"):
+    monkeypatch.setattr(
+        "agent_costbook.public_data.validate_public_artifact",
+        validate_public_artifact,
+    )
+    with pytest.raises(PublicArtifactError, match="public artifact is not available") as caught:
         create_public_app(published["db"], published["manifest"])
+    assert "official.test" not in str(caught.value)
+    assert "database_sha256" not in str(caught.value)
+
+
+def test_rejected_artifact_does_not_start(published):
+    manifest = json.loads(published["manifest"].read_text(encoding="utf-8"))
+    manifest["reviewed"] = False
+    published["manifest"].write_text(json.dumps(manifest), encoding="utf-8")
+    with pytest.raises(PublicArtifactError, match="public artifact is not available") as caught:
+        create_public_app(published["db"], published["manifest"])
+    assert published["db"].name not in str(caught.value)
 
 
 def test_paths_must_be_supplied_together(published):
@@ -262,51 +363,13 @@ def test_paths_must_be_supplied_together(published):
         create_public_app(published["db"])
 
 
-def test_health_is_alive_when_catalog_is_missing(tmp_path):
+def test_empty_database_does_not_start(tmp_path):
     database = tmp_path / "empty.sqlite3"
     Store(database).close()
     manifest = tmp_path / "manifest.json"
-    _manifest(manifest)
-    client = TestClient(create_public_app(database, manifest))
-    health = client.get("/health")
-    ready = client.get("/ready")
-    info = client.get("/v1/info")
-    catalog = client.get("/v1/catalog")
-    capabilities = client.get("/v1/capabilities")
-    assert health.status_code == 200
-    assert health.json() == {"status": "ok"}
-    _assert_error(ready, 503, "not_ready")
-    _assert_error(catalog, 503, "not_ready")
-    _assert_error(
-        client.post("/v1/estimates", json=_estimate()),
-        503,
-        "not_ready",
-    )
-    assert info.status_code == 200
-    payload = info.json()
-    assert set(payload) == INFO_KEYS
-    assert payload["catalog"] == {
-        "snapshot_id": None,
-        "data_version": None,
-        "content_sha256": None,
-    }
-    assert payload["capabilities"]["agent_count"] == 0
-    assert payload["capabilities"]["model_effort_count"] == 0
-    assert payload["usage_assumptions"] == {"supported": False}
-    assert capabilities.status_code == 200
-    listed = capabilities.json()
-    assert set(listed) == {
-        "kind",
-        "schema_version",
-        "publisher_id",
-        "content_sha256",
-        "agents",
-        "model_efforts",
-    }
-    assert listed["agents"] == []
-    assert listed["model_efforts"] == []
-    assert listed["content_sha256"] == _sha256({"agents": [], "model_efforts": []})
-    assert client.get("/v1/catalog", params={"snapshot_id": "snap-1"}).status_code == 404
+    manifest.write_text("{}", encoding="utf-8")
+    with pytest.raises(PublicArtifactError, match="public artifact is not available"):
+        create_public_app(database, manifest)
 
 
 def test_catalog_uses_exporter_document_and_cache_policy(client, published):
@@ -364,7 +427,7 @@ def test_get_etag_matches_weak_list_and_star(client):
 )
 def test_unknown_or_internal_snapshot_is_not_found(client, published, snapshot_id):
     if snapshot_id == "internal":
-        snapshot_id = published["published"][0]["snapshot_id"]
+        snapshot_id = published["record_snapshot_id"]
         assert snapshot_id.startswith("snap_")
     for response in (
         client.get("/v1/catalog", params={"snapshot_id": snapshot_id}),
@@ -380,11 +443,8 @@ def test_older_snapshot_does_not_fall_back_to_current(tmp_path):
     current = client.get("/v1/catalog")
     explicit_current = client.get("/v1/catalog", params={"snapshot_id": "snap-2"})
     assert old.status_code == 200
-    assert {row["model"] for row in old.json()["records"]} == {"synthetic-m4"}
-    assert {row["model"] for row in current.json()["records"]} == {
-        "synthetic-m4",
-        "synthetic-next",
-    }
+    assert {row["model"] for row in old.json()["records"]} == {MODEL}
+    assert {row["model"] for row in current.json()["records"]} == {MODEL, NEXT_MODEL}
     assert current.json()["snapshot_id"] == "snap-2"
     assert explicit_current.json()["snapshot_id"] == "snap-2"
     assert old.headers["cache-control"] == "public, max-age=31536000, immutable"
@@ -416,15 +476,15 @@ def test_capabilities_keep_real_rows_sort_and_independent_hash(client, published
     assert [
         (row["provider"], row["model"], row["effort"]) for row in body["model_efforts"]
     ] == [
-        ("example", "synthetic-m4", None),
-        ("example", "synthetic-m4", "low"),
+        ("example", MODEL, None),
+        ("example", MODEL, "low"),
         ("zeta", "other", "low"),
     ]
     null_row = body["model_efforts"][0]
     assert null_row["row_version"] == 1
     assert null_row["as_of"] == AS_OF
     assert null_row["source"] == "official"
-    assert [item["name"] for item in null_row["benchmarks"]] == ["zeta", "alpha"]
+    assert null_row["benchmarks"] is None
     assert body["content_sha256"] == _sha256(
         {"agents": body["agents"], "model_efforts": body["model_efforts"]}
     )
@@ -438,7 +498,7 @@ def test_capabilities_keep_real_rows_sort_and_independent_hash(client, published
     assert info.json()["capabilities"]["agent_count"] == 2
     assert info.json()["capabilities"]["model_effort_count"] == 3
     assert set(info.json()) == INFO_KEYS
-    assert info.json()["service_version"] == "1.2.0"
+    assert info.json()["service_version"] == __version__
     assert info.json()["limits"] == {
         "body_bytes": 65536,
         "candidates": 64,
@@ -456,15 +516,15 @@ def test_capabilities_keep_real_rows_sort_and_independent_hash(client, published
 
     omitted = client.get(
         "/v1/capabilities/model-efforts",
-        params={"provider": "example", "model": "synthetic-m4"},
+        params={"provider": "example", "model": MODEL},
     )
     blank = client.get(
         "/v1/capabilities/model-efforts",
-        params={"provider": "example", "model": "synthetic-m4", "effort": ""},
+        params={"provider": "example", "model": MODEL, "effort": ""},
     )
     named = client.get(
         "/v1/capabilities/model-efforts",
-        params={"provider": "example", "model": "synthetic-m4", "effort": "low"},
+        params={"provider": "example", "model": MODEL, "effort": "low"},
     )
     assert omitted.json()["effort"] is None
     assert omitted.json()["suitable"] == "null tier"
@@ -483,41 +543,24 @@ def test_capabilities_keep_real_rows_sort_and_independent_hash(client, published
     assert "strength-agent-a" not in history.text
 
 
-def test_single_capability_etag_ignores_other_rows(client, published):
-    first = client.get("/v1/capabilities/agents", params={"agent_id": "agent-a"})
+def test_single_capability_etag_is_independent_of_the_collection(client):
+    single = client.get("/v1/capabilities/agents", params={"agent_id": "agent-a"})
     collection = client.get("/v1/capabilities")
-    writer = Store(published["db"])
-    writer.save_agent_capability(_agent("agent-c"))
-    writer.close()
-    second = client.get("/v1/capabilities/agents", params={"agent_id": "agent-a"})
-    again = client.get("/v1/capabilities")
-    assert second.content == first.content
-    assert second.headers["etag"] == first.headers["etag"]
-    assert again.headers["etag"] != collection.headers["etag"]
-    assert [row["agent_id"] for row in again.json()["agents"]] == [
-        "agent-a",
-        "agent-b",
-        "agent-c",
-    ]
+    assert single.status_code == 200
+    assert single.headers["etag"] != collection.headers["etag"]
+    assert single.headers["cache-control"] == "public, max-age=300"
+    assert "immutable" not in single.headers["cache-control"]
 
 
 def test_sources_require_published_record_linkage(client, published):
-    created = published["created"][0]
-    linked = created["evidence"][0]["id"]
-    unlinked = created["evidence"][1]["id"]
-    research = created["research_id"]
+    linked = published["linked_evidence_id"]
+    unlinked = published["unlinked_evidence_id"]
+    research = published["research_id"]
     assert client.get(f"/v1/evidence/{linked}").status_code == 200
+    assert client.get(f"/v1/evidence/{linked}").json()["source_url"] == OFFICIAL_PRICE
     assert client.get(f"/v1/research/{research}").status_code == 200
     hidden_evidence = client.get(f"/v1/evidence/{unlinked}")
-    _assert_error(hidden_evidence, 404, "evidence_not_found", "unlinked-evidence-secret-7f3c")
-    writer = Store(published["db"])
-    draft, _ = writer.create_contribution(_contribution("draft-only"), None)
-    writer.close()
-    draft_evidence = client.get(f"/v1/evidence/{draft['evidence'][0]['id']}")
-    draft_research = client.get(f"/v1/research/{draft['research_id']}")
-    _assert_error(draft_evidence, 404, "evidence_not_found", draft["evidence"][0]["id"])
-    _assert_error(draft_research, 404, "research_not_found", draft["research_id"])
-    assert "draft-only" not in draft_research.text
+    _assert_error(hidden_evidence, 404, "evidence_not_found", UNLINKED_MARKER)
 
 
 def test_public_estimate_reuses_engine_and_strips_internal_snapshot(client, published):
@@ -561,7 +604,7 @@ def test_public_estimate_reuses_engine_and_strips_internal_snapshot(client, publ
     assert {item["snapshot_id"] for item in body["results"]} == {body["snapshot_id"]}
     assert {item["data_version"] for item in body["results"]} == {body["data_version"]}
     assert "record_snapshot_id" not in public.text
-    assert published["published"][0]["snapshot_id"] not in public.text
+    assert published["record_snapshot_id"] not in public.text
     assert "record_snapshot_id" in hidden.text
     assert hidden.json()["results"][0]["capabilities"]["status"] == "not_authorized"
     assert "public-reference" not in hidden.text
@@ -644,9 +687,7 @@ def test_currency_is_required_on_public_and_optional_on_private(client, publishe
     )
     allowed = private.post("/v1/estimates", json=payload)
     assert allowed.status_code == 200
-    assert allowed.json()["results"][0]["record_snapshot_id"] == published["published"][0][
-        "snapshot_id"
-    ]
+    assert allowed.json()["results"][0]["record_snapshot_id"] == published["record_snapshot_id"]
     rejected = private.post("/v1/estimates", json=_estimate(method="M7"))
     assert rejected.status_code == 401
     allowed_m7 = private.post(
@@ -664,6 +705,21 @@ def test_m7_and_writes_are_forbidden(client):
         json=_estimate(method="M7", candidates=[_candidate(secret)]),
     )
     _assert_error(measured, 403, "private_measurement_unavailable", secret)
+
+
+@pytest.mark.parametrize("method", ["M8", "M9", "nope", "m4"])
+def test_unknown_method_is_rejected_before_the_engine(client, method):
+    response = client.post("/v1/estimates", json=_estimate(method=method))
+    error = _assert_error(response, 422, "invalid_public_request", method)
+    assert error["details"][0]["loc"] == ["body", "method"]
+    assert "unsupported_method" not in response.text
+
+
+def test_public_methods_reach_the_engine(client):
+    response = client.post("/v1/estimates", json=_estimate(method="M0"))
+    assert response.status_code == 200
+    assert response.json()["results"][0]["method"] == "M0"
+    assert response.json()["results"][0]["status"] == "ok"
 
 
 @pytest.mark.parametrize(
@@ -723,12 +779,26 @@ def test_openapi_lists_only_the_public_request_shape(client):
     ):
         assert forbidden not in text
     assert "securitySchemes" not in document.get("components", {})
+    assert "security" not in document
+    assert document["info"]["version"] == __version__
+    assert "HTTPValidationError" not in text
+    assert "ValidationError" not in text
+    assert '"input"' not in text
+    assert '"msg"' not in text
+    assert '"ctx"' not in text
+    assert "M7" not in text
     estimate = document["paths"]["/v1/estimates"]["post"]["requestBody"]
     schema = estimate["content"]["application/json"]["schema"]
     if "$ref" in schema:
         name = schema["$ref"].rsplit("/", 1)[-1]
         schema = document["components"]["schemas"][name]
     assert "currency" in schema["required"]
+    assert schema["properties"]["method"]["enum"] == list(PUBLIC_METHODS)
+    invalid = document["paths"]["/v1/estimates"]["post"]["responses"]["422"]
+    assert invalid["content"]["application/json"]["schema"]["$ref"].endswith("PublicErrorResponse")
+    error_body = document["components"]["schemas"]["PublicErrorBody"]
+    assert set(error_body["properties"]) == {"code", "message", "details"}
+    assert set(error_body["properties"]["details"]["items"]["properties"]) == {"type", "loc"}
 
 
 def test_body_limit_covers_content_length_and_chunked_streams(public_app):
@@ -792,6 +862,19 @@ async def _post_chunks(app, chunks: list[tuple[bytes, bool]]) -> tuple[int, byte
         item.get("body", b"") for item in sent if item["type"] == "http.response.body"
     )
     return status, body
+
+
+def test_unexpected_backend_failure_is_a_generic_500(public_app, monkeypatch):
+    def explode(*_args, **_kwargs):
+        raise RuntimeError("secret-backend-trace /tmp/private.sqlite3")
+
+    monkeypatch.setattr("agent_costbook.public_api.build_document", explode)
+    client = TestClient(public_app, raise_server_exceptions=False)
+    response = client.get("/v1/catalog")
+    _assert_error(response, 500, "internal_error", "secret-backend-trace")
+    assert "private.sqlite3" not in response.text
+    assert "Traceback" not in response.text
+    assert "RuntimeError" not in response.text
 
 
 def test_candidate_limit_is_422(client):
