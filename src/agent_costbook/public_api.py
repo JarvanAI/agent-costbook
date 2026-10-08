@@ -25,7 +25,8 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_valida
 
 from agent_costbook import __version__ as SERVICE_VERSION
 from agent_costbook.api import build_estimate_response
-from agent_costbook.estimates import ALLOWED_USAGE, parse_decimal
+from agent_costbook.capabilities import AgentCapabilityIn, ModelEffortIn
+from agent_costbook.estimates import ALLOWED_USAGE, RATE_KEYS, parse_decimal
 from agent_costbook.export import ExportError, build_document
 from agent_costbook.models import EstimateIn, ScenarioIn
 from agent_costbook.store import Store, StoreError
@@ -452,6 +453,547 @@ class PublicGuard:
         await self.app(scope, receive, send)
 
 
+def _ref(name: str) -> dict:
+    return {"$ref": f"#/components/schemas/{name}"}
+
+
+def _nullable(schema: dict) -> dict:
+    return {"anyOf": [schema, {"type": "null"}]}
+
+
+def _object(properties: dict, required: list[str], *, extra: bool | dict = False) -> dict:
+    return {
+        "type": "object",
+        "additionalProperties": extra,
+        "properties": properties,
+        "required": required,
+    }
+
+
+def _string_array() -> dict:
+    return {"type": "array", "items": {"type": "string"}}
+
+
+def _header(description: str) -> dict:
+    return {"description": description, "schema": {"type": "string"}}
+
+
+def _json_content(schema: dict) -> dict:
+    return {"application/json": {"schema": schema}}
+
+
+_CACHE_HEADERS = {
+    "ETag": _header("Quoted SHA-256 of the canonical JSON body."),
+    "Cache-Control": _header("Cache policy for this representation."),
+}
+_ERROR_SCHEMA = _ref("PublicErrorResponse")
+
+
+def _success(schema: dict, description: str, *, cache: bool = True, store: bool = False) -> dict:
+    headers = {}
+    if cache:
+        headers.update(_CACHE_HEADERS)
+    elif store:
+        headers["Cache-Control"] = _header("Estimates are not stored.")
+    body = {"description": description, "content": _json_content(schema)}
+    if headers:
+        body["headers"] = headers
+    return body
+
+
+def _not_modified() -> dict:
+    return {"description": "Not modified.", "headers": dict(_CACHE_HEADERS)}
+
+
+def _failure(description: str, *, retry: bool = False) -> dict:
+    body = {"description": description, "content": _json_content(_ERROR_SCHEMA)}
+    if retry:
+        body["headers"] = {
+            "Retry-After": _header("Whole seconds remaining in the rate-limit window."),
+        }
+    return body
+
+
+def _read_capability_schema(model: type[BaseModel], title: str) -> tuple[dict, dict]:
+    raw = model.model_json_schema(ref_template="#/components/schemas/{model}")
+    defs = raw.pop("$defs", {})
+    properties = dict(raw.get("properties") or {})
+    properties.pop("expected_version", None)
+    properties["row_version"] = {"type": "integer", "minimum": 1}
+    properties["recorded_at"] = {"type": "string"}
+    for prop in properties.values():
+        if isinstance(prop, dict):
+            prop.pop("default", None)
+    return _object(properties, list(properties)) | {"title": title}, defs
+
+
+def _public_components() -> dict[str, dict]:
+    money = _object(
+        {
+            "amount": {"type": "string"},
+            "currency": {"type": "string"},
+            "period": {"type": "string"},
+        },
+        ["amount"],
+    )
+    priced = _object({"amount": {"type": "string"}, "currency": {"type": "string"}}, ["amount", "currency"])
+    rate_value = _nullable(priced)
+    agent, _agent_defs = _read_capability_schema(AgentCapabilityIn, "PublicAgentCapability")
+    effort, effort_defs = _read_capability_schema(ModelEffortIn, "PublicModelEffort")
+    record = _object(
+        {
+            "record_id": {"type": "string"},
+            "status": {"type": "string"},
+            "provider": {"type": "string"},
+            "channel": {"type": "string"},
+            "model": {"type": "string"},
+            "effort": _nullable({"type": "string"}),
+            "plan": {"type": "string"},
+            "scope": _object(
+                {
+                    "function": {"type": "string"},
+                    "currency": {"type": "string"},
+                    "period": {"type": "string"},
+                    "window": _object(
+                        {
+                            "start": _nullable({"type": "string"}),
+                            "end": _nullable({"type": "string"}),
+                        },
+                        ["start", "end"],
+                    ),
+                    "baseline_group": _nullable({"type": "string"}),
+                    "task_profile": _nullable({"type": "string"}),
+                },
+                ["function", "currency"],
+            ),
+            "rates": _nullable(
+                _object(
+                    {key: rate_value for key in (*RATE_KEYS, "tool_fee_per_call")},
+                    [*RATE_KEYS, "tool_fee_per_call"],
+                )
+            ),
+            "subscription": _nullable(
+                _object(
+                    {label: _nullable(money) for label in ("P", "m", "N0", "B0", "u", "C", "w", "N")},
+                    ["P", "m", "N0", "B0", "u", "C", "w", "N"],
+                )
+            ),
+            "missing_fields": _string_array(),
+            "sources": {
+                "type": "array",
+                "items": _object(
+                    {
+                        "id": {"type": "string"},
+                        "kind": _nullable({"type": "string"}),
+                        "source_url": _nullable({"type": "string"}),
+                        "collector_kind": {"type": "string"},
+                        "collector_name": {"type": "string"},
+                        "retrieved_at": {"type": "string"},
+                    },
+                    ["id"],
+                ),
+            },
+            "assumptions": _string_array(),
+            "research_id": _nullable({"type": "string"}),
+        },
+        [
+            "record_id",
+            "status",
+            "provider",
+            "channel",
+            "model",
+            "effort",
+            "plan",
+            "scope",
+            "rates",
+            "subscription",
+            "missing_fields",
+            "sources",
+            "assumptions",
+            "research_id",
+        ],
+    )
+    conflicts = {
+        "type": "array",
+        "items": _object(
+            {
+                "channel": {"type": "string"},
+                "effort": _nullable({"type": "string"}),
+                "feature_scope": {"type": "string"},
+                "model": {"type": "string"},
+                "plan": {"type": "string"},
+                "provider": {"type": "string"},
+                "record_id": {"type": "string"},
+                "variants": {"type": "array", "items": {"type": "object", "additionalProperties": True}},
+            },
+            [
+                "channel",
+                "effort",
+                "feature_scope",
+                "model",
+                "plan",
+                "provider",
+                "record_id",
+                "variants",
+            ],
+        ),
+    }
+    variable_object = _nullable({"type": "object", "additionalProperties": True})
+    result = _object(
+        {
+            "candidate_id": {"type": "string"},
+            "status": {"type": "string"},
+            "metrics": variable_object,
+            "units": variable_object,
+            "method": {"type": "string"},
+            "formula_version": _nullable({"type": "string"}),
+            "snapshot_id": {"type": "string"},
+            "sources": _string_array(),
+            "assumptions": _string_array(),
+            "missing_fields": _string_array(),
+            "freshness": _nullable(
+                _object(
+                    {
+                        "retrieved_at": _nullable({"type": "string"}),
+                        "stale": {"type": "null"},
+                    },
+                    ["retrieved_at", "stale"],
+                )
+            ),
+            "publisher_id": {"type": "string"},
+            "data_version": {"type": "integer"},
+            "capabilities": _ref("PublicCapabilityView"),
+            "cost_basis": {"type": "string", "enum": ["public-reference"]},
+            "error_code": {"type": "string"},
+            "rate_provenance": {
+                "type": "object",
+                "additionalProperties": {"type": "string"},
+            },
+            "quality_proxy": {"type": "object", "additionalProperties": True},
+        },
+        [
+            "candidate_id",
+            "status",
+            "metrics",
+            "units",
+            "method",
+            "formula_version",
+            "snapshot_id",
+            "sources",
+            "assumptions",
+            "missing_fields",
+            "freshness",
+            "publisher_id",
+            "data_version",
+            "capabilities",
+            "cost_basis",
+        ],
+    )
+    return {
+        **effort_defs,
+        "PublicAgentCapability": agent,
+        "PublicModelEffort": effort,
+        "PublicCapabilityView": _object(
+            {
+                "agent": _nullable(_ref("PublicAgentCapability")),
+                "model_effort": _nullable(_ref("PublicModelEffort")),
+                "status": {"type": "string"},
+            },
+            ["agent", "model_effort", "status"],
+        ),
+        "PublicHealth": _object({"status": {"type": "string", "enum": ["ok"]}}, ["status"]),
+        "PublicReady": _object({"status": {"type": "string", "enum": ["ready"]}}, ["status"]),
+        "PublicServiceInfo": _object(
+            {
+                "kind": {"type": "string", "enum": ["agent-costbook.service"]},
+                "schema_version": {"type": "integer", "enum": [1]},
+                "api_version": {"type": "integer", "enum": [1]},
+                "service_version": {"type": "string"},
+                "profile": {"type": "string", "enum": ["public-reference"]},
+                "publisher_id": {"type": "string"},
+                "catalog": _object(
+                    {
+                        "snapshot_id": {"type": "string"},
+                        "data_version": {"type": "integer"},
+                        "content_sha256": {"type": "string"},
+                    },
+                    ["snapshot_id", "data_version", "content_sha256"],
+                ),
+                "capabilities": _object(
+                    {
+                        "content_sha256": {"type": "string"},
+                        "agent_count": {"type": "integer"},
+                        "model_effort_count": {"type": "integer"},
+                    },
+                    ["content_sha256", "agent_count", "model_effort_count"],
+                ),
+                "access": _object(
+                    {
+                        "anonymous_read": {"type": "boolean", "enum": [True]},
+                        "remote_write": {"type": "boolean", "enum": [False]},
+                        "admin_publication": {"type": "string", "enum": ["reviewed-artifact"]},
+                    },
+                    ["anonymous_read", "remote_write", "admin_publication"],
+                ),
+                "limits": _object(
+                    {
+                        "body_bytes": {"type": "integer", "enum": [BODY_BYTES]},
+                        "candidates": {"type": "integer", "enum": [MAX_CANDIDATES]},
+                        "requests": {"type": "integer", "enum": [REQUESTS_PER_WINDOW]},
+                        "window_seconds": {"type": "integer", "enum": [WINDOW_SECONDS]},
+                        "scope": {"type": "string", "enum": ["instance"]},
+                    },
+                    ["body_bytes", "candidates", "requests", "window_seconds", "scope"],
+                ),
+                "usage_assumptions": _object(
+                    {"supported": {"type": "boolean", "enum": [False]}},
+                    ["supported"],
+                ),
+            },
+            [
+                "kind",
+                "schema_version",
+                "api_version",
+                "service_version",
+                "profile",
+                "publisher_id",
+                "catalog",
+                "capabilities",
+                "access",
+                "limits",
+                "usage_assumptions",
+            ],
+        ),
+        "PublicSnapshot": _object(
+            {
+                "kind": {"type": "string", "enum": ["agent-costbook.snapshot"]},
+                "schema_version": {"type": "integer", "enum": [1]},
+                "publisher_id": {"type": "string"},
+                "data_version": {"type": "integer"},
+                "snapshot_id": {"type": "string"},
+                "published_at": {"type": "string"},
+                "formula_version": {"type": "string"},
+                "freshness": {"type": "null"},
+                "content_sha256": {"type": "string"},
+                "records": {"type": "array", "items": record},
+                "conflicts": conflicts,
+            },
+            [
+                "kind",
+                "schema_version",
+                "publisher_id",
+                "data_version",
+                "snapshot_id",
+                "published_at",
+                "formula_version",
+                "freshness",
+                "content_sha256",
+                "records",
+            ],
+        ),
+        "PublicCapabilities": _object(
+            {
+                "kind": {"type": "string", "enum": ["agent-costbook.capabilities"]},
+                "schema_version": {"type": "integer", "enum": [1]},
+                "publisher_id": {"type": "string"},
+                "content_sha256": {"type": "string"},
+                "agents": {"type": "array", "items": _ref("PublicAgentCapability")},
+                "model_efforts": {"type": "array", "items": _ref("PublicModelEffort")},
+            },
+            [
+                "kind",
+                "schema_version",
+                "publisher_id",
+                "content_sha256",
+                "agents",
+                "model_efforts",
+            ],
+        ),
+        "PublicEvidence": _object(
+            {
+                "id": {"type": "string"},
+                "contribution_id": {"type": "string"},
+                "source_kind": {"type": "string"},
+                "source_url": _nullable({"type": "string"}),
+                "collector_kind": {"type": "string"},
+                "collector_name": {"type": "string"},
+                "content": {"type": "string"},
+                "content_sha256": {"type": "string"},
+                "retrieved_at": {"type": "string"},
+            },
+            [
+                "id",
+                "contribution_id",
+                "source_kind",
+                "source_url",
+                "collector_kind",
+                "collector_name",
+                "content",
+                "content_sha256",
+                "retrieved_at",
+            ],
+        ),
+        "PublicResearch": _object(
+            {
+                "id": {"type": "string"},
+                "contribution_id": {"type": "string"},
+                "title": {"type": "string"},
+                "markdown": {"type": "string"},
+            },
+            ["id", "contribution_id", "title", "markdown"],
+        ),
+        "PublicEstimateResult": result,
+        "PublicEstimate": _object(
+            {
+                "kind": {"type": "string", "enum": ["agent-costbook.estimate"]},
+                "schema_version": {"type": "integer", "enum": [1]},
+                "cost_basis": {"type": "string", "enum": ["public-reference"]},
+                "publisher_id": {"type": "string"},
+                "data_version": {"type": "integer"},
+                "snapshot_id": {"type": "string"},
+                "published_at": {"type": "string"},
+                "formula_version": {"type": "string"},
+                "freshness": {"type": "null"},
+                "content_sha256": {"type": "string"},
+                "conflicts": conflicts,
+                "results": {"type": "array", "items": _ref("PublicEstimateResult")},
+            },
+            [
+                "kind",
+                "schema_version",
+                "cost_basis",
+                "publisher_id",
+                "data_version",
+                "snapshot_id",
+                "published_at",
+                "formula_version",
+                "freshness",
+                "content_sha256",
+                "results",
+            ],
+        ),
+        "PublicOpenAPIDocument": _object(
+            {
+                "openapi": {"type": "string"},
+                "info": _object(
+                    {"title": {"type": "string"}, "version": {"type": "string"}},
+                    ["title", "version"],
+                    extra=True,
+                ),
+                "paths": {"type": "object", "additionalProperties": True},
+                "components": {"type": "object", "additionalProperties": True},
+            },
+            ["openapi", "info", "paths"],
+            extra=True,
+        ),
+        "PublicErrorBody": _object(
+            {
+                "code": {"type": "string"},
+                "message": {"type": "string"},
+                "details": {
+                    "type": "array",
+                    "items": _object(
+                        {
+                            "type": {"type": "string"},
+                            "loc": {
+                                "type": "array",
+                                "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]},
+                            },
+                        },
+                        ["type", "loc"],
+                    ),
+                },
+            },
+            ["code", "message"],
+        ),
+        "PublicErrorResponse": _object({"error": _ref("PublicErrorBody")}, ["error"]),
+    }
+
+
+def _operation_responses() -> dict[tuple[str, str], dict]:
+    limited = _failure("The instance request limit was reached.", retry=True)
+    invalid = _failure("The request is invalid.")
+    missing = _failure("The resource was not found.")
+    unavailable = _failure("The public catalog is not ready.")
+    return {
+        ("/health", "get"): {
+            "200": _success(_ref("PublicHealth"), "Process is alive."),
+            "304": _not_modified(),
+        },
+        ("/ready", "get"): {
+            "200": _success(_ref("PublicReady"), "Published catalog is ready."),
+            "304": _not_modified(),
+            "503": unavailable,
+        },
+        ("/v1/info", "get"): {
+            "200": _success(_ref("PublicServiceInfo"), "Public service descriptor."),
+            "304": _not_modified(),
+            "429": limited,
+            "503": unavailable,
+        },
+        ("/v1/catalog", "get"): {
+            "200": _success(_ref("PublicSnapshot"), "Exported public snapshot."),
+            "304": _not_modified(),
+            "404": missing,
+            "422": invalid,
+            "429": limited,
+            "503": unavailable,
+        },
+        ("/v1/capabilities", "get"): {
+            "200": _success(_ref("PublicCapabilities"), "Public capability collection."),
+            "304": _not_modified(),
+            "429": limited,
+        },
+        ("/v1/capabilities/agents", "get"): {
+            "200": _success(_ref("PublicAgentCapability"), "One public agent capability."),
+            "304": _not_modified(),
+            "404": missing,
+            "422": invalid,
+            "429": limited,
+        },
+        ("/v1/capabilities/model-efforts", "get"): {
+            "200": _success(_ref("PublicModelEffort"), "One public model-effort capability."),
+            "304": _not_modified(),
+            "404": missing,
+            "422": invalid,
+            "429": limited,
+        },
+        ("/v1/evidence/{evidence_id}", "get"): {
+            "200": _success(_ref("PublicEvidence"), "Published linked evidence."),
+            "304": _not_modified(),
+            "404": missing,
+            "422": invalid,
+            "429": limited,
+        },
+        ("/v1/research/{research_id}", "get"): {
+            "200": _success(_ref("PublicResearch"), "Published linked research."),
+            "304": _not_modified(),
+            "404": missing,
+            "422": invalid,
+            "429": limited,
+        },
+        ("/v1/estimates", "post"): {
+            "200": _success(
+                _ref("PublicEstimate"),
+                "Public reference estimate.",
+                cache=False,
+                store=True,
+            ),
+            "403": _failure("Private measurement is unavailable."),
+            "404": missing,
+            "413": _failure("The request body is too large."),
+            "422": invalid,
+            "429": limited,
+            "503": unavailable,
+        },
+        ("/openapi.json", "get"): {
+            "200": _success(_ref("PublicOpenAPIDocument"), "This OpenAPI document."),
+            "304": _not_modified(),
+            "429": limited,
+        },
+    }
+
+
 def _public_openapi(app: FastAPI) -> dict:
     schema = get_openapi(title=app.title, version=app.version, routes=app.routes)
     schema.pop("security", None)
@@ -469,54 +1011,22 @@ def _public_openapi(app: FastAPI) -> dict:
             method["enum"] = list(PUBLIC_METHODS)
     schemas.pop("HTTPValidationError", None)
     schemas.pop("ValidationError", None)
-    schemas["PublicErrorBody"] = {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["code", "message"],
-        "properties": {
-            "code": {"type": "string"},
-            "message": {"type": "string"},
-            "details": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "additionalProperties": False,
-                    "required": ["type", "loc"],
-                    "properties": {
-                        "type": {"type": "string"},
-                        "loc": {
-                            "type": "array",
-                            "items": {"anyOf": [{"type": "string"}, {"type": "integer"}]},
-                        },
-                    },
-                },
-            },
-        },
-    }
-    schemas["PublicErrorResponse"] = {
-        "type": "object",
-        "additionalProperties": False,
-        "required": ["error"],
-        "properties": {"error": {"$ref": "#/components/schemas/PublicErrorBody"}},
-    }
-    invalid = {
-        "description": "Invalid public request",
-        "content": {
-            "application/json": {
-                "schema": {"$ref": "#/components/schemas/PublicErrorResponse"}
-            }
-        },
-    }
-    for path_item in schema.get("paths", {}).values():
+    schemas.update(_public_components())
+    documented = _operation_responses()
+    for path, path_item in schema.get("paths", {}).items():
         if not isinstance(path_item, dict):
             continue
-        for operation in path_item.values():
+        for method, operation in path_item.items():
             if not isinstance(operation, dict):
                 continue
             operation.pop("security", None)
-            responses = operation.get("responses")
-            if isinstance(responses, dict) and "422" in responses:
-                responses["422"] = invalid
+            responses = documented.get((path, method))
+            if responses is not None:
+                operation["responses"] = responses
+            elif isinstance(operation.get("responses"), dict):
+                current = operation["responses"]
+                if "422" in current:
+                    current["422"] = _failure("The request is invalid.")
     return schema
 
 

@@ -242,7 +242,7 @@ def _prepare(directory: Path, *, versions: int = 1) -> dict:
             directory / "base.manifest.json",
         )
         compile_public_catalog(
-            _source((NEXT_MODEL,)),
+            _source((MODEL, NEXT_MODEL)),
             database,
             manifest_path,
             update_from=base,
@@ -799,6 +799,209 @@ def test_openapi_lists_only_the_public_request_shape(client):
     error_body = document["components"]["schemas"]["PublicErrorBody"]
     assert set(error_body["properties"]) == {"code", "message", "details"}
     assert set(error_body["properties"]["details"]["items"]["properties"]) == {"type", "loc"}
+
+
+def _resolved_schema(document, schema, seen=0):
+    while isinstance(schema, dict) and "$ref" in schema:
+        if seen > 8:
+            break
+        name = schema["$ref"].rsplit("/", 1)[-1]
+        schema = document["components"]["schemas"][name]
+        seen += 1
+    return schema
+
+
+def _schema_matches(document, schema, payload) -> bool:
+    schema = _resolved_schema(document, schema)
+    if "anyOf" in schema:
+        return any(_schema_matches(document, branch, payload) for branch in schema["anyOf"])
+    if "oneOf" in schema:
+        return any(_schema_matches(document, branch, payload) for branch in schema["oneOf"])
+    if schema.get("type") == "null":
+        return payload is None
+    if payload is None:
+        return False
+    if "enum" in schema and payload not in schema["enum"]:
+        return False
+    kind = schema.get("type")
+    if kind == "object":
+        if not isinstance(payload, dict):
+            return False
+        properties = schema.get("properties") or {}
+        required = set(schema.get("required") or [])
+        if not required <= set(payload):
+            return False
+        extra = schema.get("additionalProperties", True)
+        if extra is False and not set(payload) <= set(properties):
+            return False
+        for key, value in payload.items():
+            if key in properties:
+                if not _schema_matches(document, properties[key], value):
+                    return False
+            elif isinstance(extra, dict) and not _schema_matches(document, extra, value):
+                return False
+        return True
+    if kind == "array":
+        if not isinstance(payload, list):
+            return False
+        item = schema.get("items")
+        return item is None or all(_schema_matches(document, item, value) for value in payload)
+    if kind == "string":
+        return isinstance(payload, str)
+    if kind == "integer":
+        return type(payload) is int
+    if kind == "boolean":
+        return type(payload) is bool
+    if kind == "number":
+        return type(payload) in {int, float} and type(payload) is not bool
+    return False
+
+
+def _property_names(schema) -> set[str]:
+    if not isinstance(schema, dict):
+        return set()
+    names = set(schema.get("properties") or {})
+    for key in ("anyOf", "oneOf"):
+        for branch in schema.get(key) or []:
+            names |= _property_names(branch)
+    return names
+
+
+def _success_schema(document, path, method):
+    response = document["paths"][path][method]["responses"]["200"]
+    return response["content"]["application/json"]["schema"]
+
+
+def test_openapi_success_schemas_match_live_bodies(client, published):
+    document = client.get("/openapi.json").json()
+    info = client.get("/v1/info").json()
+    catalog = client.get("/v1/catalog").json()
+    capabilities = client.get("/v1/capabilities").json()
+    agent = client.get("/v1/capabilities/agents", params={"agent_id": "agent-a"}).json()
+    effort = client.get(
+        "/v1/capabilities/model-efforts",
+        params={"provider": "example", "model": MODEL},
+    ).json()
+    evidence = client.get(f"/v1/evidence/{published['linked_evidence_id']}").json()
+    research = client.get(f"/v1/research/{published['research_id']}").json()
+    health = client.get("/health").json()
+    ready = client.get("/ready").json()
+    estimated = client.post(
+        "/v1/estimates",
+        json=_estimate(
+            candidates=[
+                _candidate("known", agent_id="agent-a"),
+                _candidate("missing", model="not-published"),
+            ]
+        ),
+    ).json()
+    priced = client.post("/v1/estimates", json=_estimate(method="M0")).json()
+    missing_usage = client.post(
+        "/v1/estimates",
+        json=_estimate(usage=None),
+    ).json()
+    samples = {
+        ("/health", "get"): [health],
+        ("/ready", "get"): [ready],
+        ("/v1/info", "get"): [info],
+        ("/v1/catalog", "get"): [catalog],
+        ("/v1/capabilities", "get"): [capabilities],
+        ("/v1/capabilities/agents", "get"): [agent],
+        ("/v1/capabilities/model-efforts", "get"): [effort],
+        ("/v1/evidence/{evidence_id}", "get"): [evidence],
+        ("/v1/research/{research_id}", "get"): [research],
+        ("/v1/estimates", "post"): [estimated, priced, missing_usage],
+        ("/openapi.json", "get"): [document],
+    }
+    for (path, method), payloads in samples.items():
+        schema = _success_schema(document, path, method)
+        resolved = _resolved_schema(document, schema)
+        assert resolved.get("type") == "object" and resolved.get("properties"), path
+        for payload in payloads:
+            assert _schema_matches(document, schema, payload), path
+    info_schema = _resolved_schema(document, _success_schema(document, "/v1/info", "get"))
+    assert set(info_schema["required"]) == INFO_KEYS
+    catalog_schema = _resolved_schema(
+        document, _success_schema(document, "/v1/catalog", "get")
+    )
+    assert {
+        "kind",
+        "schema_version",
+        "publisher_id",
+        "data_version",
+        "snapshot_id",
+        "published_at",
+        "formula_version",
+        "freshness",
+        "content_sha256",
+        "records",
+    } <= set(catalog_schema["required"])
+    estimate_schema = _resolved_schema(
+        document, _success_schema(document, "/v1/estimates", "post")
+    )
+    assert {"kind", "schema_version", "cost_basis", "results"} <= set(estimate_schema["required"])
+    assert "records" not in estimate_schema["properties"]
+    assert "record_snapshot_id" not in estimate_schema["properties"]
+    result_schema = _resolved_schema(document, estimate_schema["properties"]["results"]["items"])
+    assert {
+        "status",
+        "metrics",
+        "units",
+        "missing_fields",
+        "capabilities",
+        "cost_basis",
+    } <= set(result_schema["required"])
+    assert "record_snapshot_id" not in result_schema["properties"]
+    assert _schema_matches(document, result_schema["properties"]["metrics"], None)
+    assert "cost" not in _property_names(result_schema["properties"]["metrics"])
+    agent_schema = _resolved_schema(
+        document, _success_schema(document, "/v1/capabilities/agents", "get")
+    )
+    assert {"row_version", "recorded_at", "agent_id", "as_of", "source"} <= set(
+        agent_schema["required"]
+    )
+    assert "expected_version" not in agent_schema["properties"]
+    text = json.dumps(document)
+    for forbidden in (
+        "expected_version",
+        "record_snapshot_id",
+        "private_rates",
+        "private_subscription",
+        "marginal_cash",
+        "observation_id",
+        "securitySchemes",
+    ):
+        assert forbidden not in text
+    cached = (
+        "/health",
+        "/ready",
+        "/v1/info",
+        "/v1/catalog",
+        "/v1/capabilities",
+        "/v1/capabilities/agents",
+        "/v1/capabilities/model-efforts",
+        "/v1/evidence/{evidence_id}",
+        "/v1/research/{research_id}",
+        "/openapi.json",
+    )
+    for path in cached:
+        responses = document["paths"][path]["get"]["responses"]
+        assert "ETag" in responses["200"]["headers"]
+        assert "Cache-Control" in responses["200"]["headers"]
+        assert "content" not in responses["304"]
+        assert "ETag" in responses["304"]["headers"]
+        assert "Cache-Control" in responses["304"]["headers"]
+    estimates = document["paths"]["/v1/estimates"]["post"]["responses"]
+    assert "304" not in estimates
+    assert "Cache-Control" in estimates["200"]["headers"]
+    assert "ETag" not in estimates["200"].get("headers", {})
+    for code in ("403", "404", "413", "422", "429", "503"):
+        ref = estimates[code]["content"]["application/json"]["schema"]["$ref"]
+        assert ref.endswith("PublicErrorResponse")
+    assert "Retry-After" in estimates["429"]["headers"]
+    assert "404" in document["paths"]["/v1/catalog"]["get"]["responses"]
+    assert "503" in document["paths"]["/ready"]["get"]["responses"]
+    assert "429" not in document["paths"]["/health"]["get"]["responses"]
 
 
 def test_body_limit_covers_content_length_and_chunked_streams(public_app):
