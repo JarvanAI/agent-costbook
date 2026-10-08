@@ -29,3 +29,10 @@
 - 用无AC源码/CLI/管理key的HTTP客户端查询公网URL/版本/能力并计算已知公开参考成本；错误版本/无usage/缺能力/服务不可达可区分。
 - 验证免费plan/无收费开关、部署权限、公开production URL、重启/冷启动数据保留、更新/回滚/备份路径。账号未就绪只记录本地证据，公网验收未完成。
 - 给AR交完整request/response/status fixture、OpenAPI与实际缺项。AR自己的真实Jev推荐不由本侧替代。
+
+## 协议复核补充
+
+- 完整响应 metadata变化但records hash未变时ETag变化；单行ETag不受其他行变化影响。弱If-None-Match/列表/*按RFC与实际字节强ETag匹配，304无正文且cache header保留。
+- 内部snapshot ID404；公开估算无record_snapshot_id；缺当前snapshot503且能力仍可读取。currency未传422，private factory仍保持原行为。
+- SQLite单文件DELETE journal，观测/collector jobs/未发布贡献拒绝；capability表/schema/publisher/hash明确验证，无启动修复。
+- Docker80/8080由PORT显式校准；Vercel原生ASGI入口和依赖/资源打包验证，VCR有价不当作免费权益。

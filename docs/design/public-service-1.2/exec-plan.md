@@ -3,7 +3,7 @@
 > For agentic workers: use subagent-driven-development or executing-plans; follow scoped ownership, TDD and repository-native checks. Human 已授权公共服务业务边界，本计划落实已授权工作，不新建审批生命周期。
 
 Goal：交付复用1.1.0的匿名公开HTTP、审核数据、Docker及免费部署适配。
-Architecture：独立public factory +共享既有计算响应逻辑；本地管理员维护、固定审核SQLite发行物、线上只读。Tech：Python/FastAPI/Pydantic/SQLite/uv/Docker；首选Vercel Container Images，未就绪记录未部署。
+Architecture：独立public factory +共享既有计算响应逻辑；本地管理员维护、固定审核SQLite发行物、线上只读。Tech：Python/FastAPI/Pydantic/SQLite/uv/Docker；首选Vercel原生FastAPI（容器仓库费用未核实则不启用），未就绪记录未部署。
 
 ## 工作区与执行角色
 
@@ -26,7 +26,7 @@ flowchart TD
 
 ## 1 设计复核
 
-- [ ] 独立Grok完整读取spec/test/本计划和AR消费要求，只提出具体缺口、复用与权限/数据持久性问题；修正一次，不让建议生成新系统。
+- [x] 独立Grok完整读取spec/test/本计划和AR消费要求，只提出具体缺口、复用与权限/数据持久性问题；修正一次，不让建议生成新系统。
 
 ## 2 public HTTP（Grok，源码所有者）
 
@@ -43,7 +43,7 @@ flowchart TD
 
 ## 4 Docker与部署说明（agy，声明所有者）
 
-- [ ] Dockerfile、Dockerfile.vercel、.dockerignore、compose/selfhost说明、GHCR build/check workflow；env只为public DB/manifest/PORT等，不包含key，镜像非root默认只读。
+- [ ] Dockerfile、deploy/vercel-container/Dockerfile.vercel、app.py/vercel.json原生入口、.dockerignore、compose/selfhost说明、GHCR build/check workflow；env只为public DB/manifest/PORT等，不包含key，镜像非root默认只读。
 - [ ] 原生Docker实际build/run/多实例/重启/纯HTTP客户端 smoke；跨平台/网络限制不虚构验证。
 - [ ] 托管官方依据与免费条件、不可变持久数据更新/回滚、无在线写、quota用尽/冷启动限制写清楚。无外部存储或主机权益不自动采购/升级付费。
 
