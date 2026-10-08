@@ -4,8 +4,18 @@
 
 agent-costbook stores facts with evidence so that a consumer such as
 agent-router can inspect the basis of
-an Agent, model, or effort decision. A fresh clone includes synthetic examples;
-it does not include the maintainer's running database or a complete live catalog.
+an Agent, model, or effort decision. A fresh clone includes synthetic examples
+and a separately reviewed public artifact with 17 OpenRouter price cards,
+5 agents and 33 model-effort rows. It does not include the maintainer's private
+running database or a complete provider catalog.
+
+The [first public artifact](research/public-catalog-20261008.md) records source
+URLs, times, coverage and exclusions. It omits 12 conditional model prices
+that the current rate identity cannot represent, cache-write billing conditions
+without a universal rate, AA scores and private account data. Unknown rates are
+not free. [Public publication maintenance](deployment.md) copies the previous
+reviewed database to retain its publisher and history; startup never researches
+sources, calls a model, or writes to the artifact.
 
 ## Sources and updates
 
@@ -38,6 +48,12 @@ are distinct from added cash. The service does not assign them an automatic
 exchange rate. Benchmark-based capability weights are optional linear proxies,
 not measured success probabilities. Task-result observations are a separate
 private input; missing observations stay missing.
+
+The public HTTP profile labels estimates `public-reference`. It does not
+calculate a user's personal paid cost or remaining quota. AR retains private
+prices, quota and local assets and uses them in its own decisions; these inputs
+must not be uploaded to the public AC service. Capability facts can be read
+independently when usage or prices are missing.
 
 ## What the license covers
 
