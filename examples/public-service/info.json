@@ -1,0 +1,50 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/info",
+    "body": null
+  },
+  "status": 200,
+  "headers": {
+    "date": "Thu, 08 Oct 2026 06:57:16 GMT",
+    "server": "uvicorn",
+    "etag": "\"be6422b986f116b2d711b8b7ac2b029359f54573d0dba3e386ccbd9db52a9f96\"",
+    "cache-control": "public, max-age=300",
+    "content-length": "687",
+    "content-type": "application/json",
+    "Connection": "close"
+  },
+  "response": {
+    "access": {
+      "admin_publication": "reviewed-artifact",
+      "anonymous_read": true,
+      "remote_write": false
+    },
+    "api_version": 1,
+    "capabilities": {
+      "agent_count": 5,
+      "content_sha256": "52121452c81c8de536d8e9e9f9d189f7c90e063789db1c543e8f151f3aec41d2",
+      "model_effort_count": 33
+    },
+    "catalog": {
+      "content_sha256": "cdd4d50d966bd81d439914021d5afa1d0a028490304b7e7fd43ea55a11f8ad6f",
+      "data_version": 1,
+      "snapshot_id": "snap-1"
+    },
+    "kind": "agent-costbook.service",
+    "limits": {
+      "body_bytes": 65536,
+      "candidates": 64,
+      "requests": 60,
+      "scope": "instance",
+      "window_seconds": 60
+    },
+    "profile": "public-reference",
+    "publisher_id": "pub_008d3e8ddcc84a8a984064b9e1e3dd80",
+    "schema_version": 1,
+    "service_version": "1.2.0",
+    "usage_assumptions": {
+      "supported": false
+    }
+  }
+}

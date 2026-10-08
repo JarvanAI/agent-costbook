@@ -1,0 +1,22 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/v1/contributions",
+    "body": {}
+  },
+  "status": 403,
+  "headers": {
+    "date": "Thu, 08 Oct 2026 06:57:16 GMT",
+    "server": "uvicorn",
+    "cache-control": "no-store",
+    "content-length": "82",
+    "content-type": "application/json",
+    "Connection": "close"
+  },
+  "response": {
+    "error": {
+      "code": "public_read_only",
+      "message": "The public service is read only."
+    }
+  }
+}

@@ -1,0 +1,166 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/v1/estimates",
+    "body": {
+      "method": "M4",
+      "currency": "USD",
+      "extra_cost": "0",
+      "candidates": [
+        {
+          "candidate_id": "priced",
+          "provider": "openai",
+          "channel": "openrouter",
+          "model": "openai/gpt-4o-mini",
+          "plan": "payg",
+          "feature_scope": "text",
+          "agent_id": "codex"
+        },
+        {
+          "candidate_id": "price-gap",
+          "provider": "openai",
+          "channel": "openrouter",
+          "model": "openai/gpt-6.1-sol",
+          "plan": "payg",
+          "feature_scope": "text",
+          "agent_id": "codex",
+          "effort": "high"
+        }
+      ]
+    }
+  },
+  "status": 200,
+  "headers": {
+    "date": "Thu, 08 Oct 2026 06:57:16 GMT",
+    "server": "uvicorn",
+    "cache-control": "no-store",
+    "content-length": "3057",
+    "content-type": "application/json",
+    "Connection": "close"
+  },
+  "response": {
+    "conflicts": [],
+    "content_sha256": "cdd4d50d966bd81d439914021d5afa1d0a028490304b7e7fd43ea55a11f8ad6f",
+    "cost_basis": "public-reference",
+    "data_version": 1,
+    "formula_version": "ac-formulas-v2",
+    "freshness": null,
+    "kind": "agent-costbook.estimate",
+    "published_at": "2026-10-08T06:49:58.374569+00:00",
+    "publisher_id": "pub_008d3e8ddcc84a8a984064b9e1e3dd80",
+    "results": [
+      {
+        "assumptions": [],
+        "candidate_id": "priced",
+        "capabilities": {
+          "agent": {
+            "agent_id": "codex",
+            "as_of": "2026-10-08T14:06:45+08:00",
+            "can_edit_files": true,
+            "can_use_tools": true,
+            "domain": "terminal coding agent",
+            "input_output_shape": "Terminal session in a repository; task text in, edits and command output out.",
+            "recorded_at": "2026-10-08T06:49:58.380349+00:00",
+            "row_version": 1,
+            "source": "official",
+            "source_ref": "https://developers.openai.com/codex/cli",
+            "strengths": "The Codex CLI page says a repository session can edit files and run local development tools.",
+            "unsuitable": null
+          },
+          "model_effort": {
+            "as_of": "2026-10-08T13:58:41+08:00",
+            "benchmarks": null,
+            "context_length": 128000,
+            "default_for_agents": null,
+            "effort": null,
+            "model": "openai/gpt-4o-mini",
+            "provider": "openai",
+            "recorded_at": "2026-10-08T06:49:58.502134+00:00",
+            "row_version": 1,
+            "source": "official",
+            "source_ref": "https://openrouter.ai/api/v1/models",
+            "suitable": null,
+            "unsuitable": null
+          },
+          "status": "ok"
+        },
+        "cost_basis": "public-reference",
+        "data_version": 1,
+        "formula_version": "m4-v1",
+        "freshness": {
+          "retrieved_at": "2026-10-08T13:58:41+08:00",
+          "stale": null
+        },
+        "method": "M4",
+        "metrics": null,
+        "missing_fields": [
+          "usage"
+        ],
+        "publisher_id": "pub_008d3e8ddcc84a8a984064b9e1e3dd80",
+        "rate_provenance": {
+          "billed_output_per_million": "public",
+          "cache_read_per_million": "public",
+          "uncached_input_per_million": "public"
+        },
+        "snapshot_id": "snap-1",
+        "sources": [
+          "ev_2d79f403ec004b90b3cc4b7beea86527"
+        ],
+        "status": "missing_data",
+        "units": null
+      },
+      {
+        "assumptions": [],
+        "candidate_id": "price-gap",
+        "capabilities": {
+          "agent": {
+            "agent_id": "codex",
+            "as_of": "2026-10-08T14:06:45+08:00",
+            "can_edit_files": true,
+            "can_use_tools": true,
+            "domain": "terminal coding agent",
+            "input_output_shape": "Terminal session in a repository; task text in, edits and command output out.",
+            "recorded_at": "2026-10-08T06:49:58.380349+00:00",
+            "row_version": 1,
+            "source": "official",
+            "source_ref": "https://developers.openai.com/codex/cli",
+            "strengths": "The Codex CLI page says a repository session can edit files and run local development tools.",
+            "unsuitable": null
+          },
+          "model_effort": {
+            "as_of": "2026-10-08T14:30:15+08:00",
+            "benchmarks": null,
+            "context_length": 1050000,
+            "default_for_agents": null,
+            "effort": "high",
+            "model": "openai/gpt-6.1-sol",
+            "provider": "openai",
+            "recorded_at": "2026-10-08T06:49:58.758353+00:00",
+            "row_version": 1,
+            "source": "official",
+            "source_ref": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+            "suitable": null,
+            "unsuitable": null
+          },
+          "status": "ok"
+        },
+        "cost_basis": "public-reference",
+        "data_version": 1,
+        "formula_version": null,
+        "freshness": null,
+        "method": "M4",
+        "metrics": null,
+        "missing_fields": [
+          "record"
+        ],
+        "publisher_id": "pub_008d3e8ddcc84a8a984064b9e1e3dd80",
+        "snapshot_id": "snap-1",
+        "sources": [],
+        "status": "missing_data",
+        "units": null
+      }
+    ],
+    "schema_version": 1,
+    "snapshot_id": "snap-1"
+  }
+}

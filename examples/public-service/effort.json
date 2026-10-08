@@ -1,0 +1,32 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/capabilities/model-efforts?provider=openai&model=openai%2Fgpt-6.1-sol&effort=high",
+    "body": null
+  },
+  "status": 200,
+  "headers": {
+    "date": "Thu, 08 Oct 2026 06:57:16 GMT",
+    "server": "uvicorn",
+    "etag": "\"23bf0902b572cd1ca8bb1be1d7bedd24ac9ddd9815983aea73b1d356a5f78975\"",
+    "cache-control": "public, max-age=300",
+    "content-length": "363",
+    "content-type": "application/json",
+    "Connection": "close"
+  },
+  "response": {
+    "as_of": "2026-10-08T14:30:15+08:00",
+    "benchmarks": null,
+    "context_length": 1050000,
+    "default_for_agents": null,
+    "effort": "high",
+    "model": "openai/gpt-6.1-sol",
+    "provider": "openai",
+    "recorded_at": "2026-10-08T06:49:58.758353+00:00",
+    "row_version": 1,
+    "source": "official",
+    "source_ref": "https://developers.openai.com/api/docs/models/gpt-6.1-sol",
+    "suitable": null,
+    "unsuitable": null
+  }
+}

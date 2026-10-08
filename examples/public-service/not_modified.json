@@ -1,0 +1,16 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/catalog",
+    "body": null
+  },
+  "status": 304,
+  "headers": {
+    "date": "Thu, 08 Oct 2026 06:57:16 GMT",
+    "server": "uvicorn",
+    "etag": "\"64d5940a69f392d8eec56e2af18cda26396bf5f49945a54812e2e1ff00cac54d\"",
+    "cache-control": "public, max-age=300",
+    "Connection": "close"
+  },
+  "response": null
+}

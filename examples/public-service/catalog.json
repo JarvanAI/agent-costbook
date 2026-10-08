@@ -1,0 +1,847 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/catalog",
+    "body": null
+  },
+  "status": 200,
+  "headers": {
+    "date": "Thu, 08 Oct 2026 06:57:16 GMT",
+    "server": "uvicorn",
+    "etag": "\"64d5940a69f392d8eec56e2af18cda26396bf5f49945a54812e2e1ff00cac54d\"",
+    "cache-control": "public, max-age=300",
+    "content-length": "15803",
+    "content-type": "application/json",
+    "Connection": "close"
+  },
+  "response": {
+    "conflicts": [],
+    "content_sha256": "cdd4d50d966bd81d439914021d5afa1d0a028490304b7e7fd43ea55a11f8ad6f",
+    "data_version": 1,
+    "formula_version": "ac-formulas-v2",
+    "freshness": null,
+    "kind": "agent-costbook.snapshot",
+    "published_at": "2026-10-08T06:49:58.374569+00:00",
+    "publisher_id": "pub_008d3e8ddcc84a8a984064b9e1e3dd80",
+    "records": [
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "anthropic/claude-sonnet-5",
+        "plan": "payg",
+        "provider": "anthropic",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "10",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.2",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "2",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_0c9b919f870e4363ad9e63c3c8195235",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      },
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "google/gemini-3.5-flash",
+        "plan": "payg",
+        "provider": "google",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "9",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.15",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "1.5",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_1bcde0bce6ac445c92d75c2e4dfead9a",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      },
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "google/gemini-3.8-flash",
+        "plan": "payg",
+        "provider": "google",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "3.75",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.075",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "0.75",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_29bbf80562c7490b8ce107f4d4d339db",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      },
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "openai/gpt-5.1-codex",
+        "plan": "payg",
+        "provider": "openai",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "10",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.13",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "1.25",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_2bdbcd7b9a8e4a349225a41746965067",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      },
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "openai/gpt-5",
+        "plan": "payg",
+        "provider": "openai",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "10",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.125",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "1.25",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_613b3fef514e467baffed111f02f9bdd",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      },
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "anthropic/claude-opus-5",
+        "plan": "payg",
+        "provider": "anthropic",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "25",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.5",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "5",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_6a68a12ba86a43e2b3364f7e56a3aeb6",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      },
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "openai/gpt-5.2-codex",
+        "plan": "payg",
+        "provider": "openai",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "14",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.175",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "1.75",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_73d945035d7542189e5ba02aa46f1915",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      },
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "anthropic/claude-sonnet-5.5",
+        "plan": "payg",
+        "provider": "anthropic",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "10",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.1",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "2",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_77840cc1448847ffa6fa46d41373060c",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      },
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "anthropic/claude-opus-5.5",
+        "plan": "payg",
+        "provider": "anthropic",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "20",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.2",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "4",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_781291d903d2457997b1ea317dbb6567",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      },
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "anthropic/claude-fable-5.1",
+        "plan": "payg",
+        "provider": "anthropic",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "50",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.25",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "10",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_b371e6d12f0040928b5c55b7b0a0d9fa",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      },
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "openai/o3",
+        "plan": "payg",
+        "provider": "openai",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "8",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.5",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "2",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_c212b16492d74fff917f48a1de9ee2dd",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      },
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "google/gemini-3.7-flash",
+        "plan": "payg",
+        "provider": "google",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "3.75",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.075",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "0.75",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_ce2a4c3faadb4c44aeb5008cfdc99004",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      },
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "openai/o4-mini",
+        "plan": "payg",
+        "provider": "openai",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "4.4",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.275",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "1.1",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_d11ebc419e314ed995825ed062236bab",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      },
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "openai/gpt-5.4-mini",
+        "plan": "payg",
+        "provider": "openai",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "4.5",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.075",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "0.75",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_d349b5773cfc4ec3b2129d917f48c285",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      },
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "google/gemini-3.5-flash-lite",
+        "plan": "payg",
+        "provider": "google",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "2.5",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.03",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "0.3",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_e36bef54b8a54bcfa0fe44f0d928d7db",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      },
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "google/gemini-3.6-flash",
+        "plan": "payg",
+        "provider": "google",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "3.75",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.075",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "0.75",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_e99a76e358e84f22ba9b66f27874021b",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      },
+      {
+        "assumptions": [],
+        "channel": "openrouter",
+        "effort": null,
+        "missing_fields": [
+          "cache_write_per_million",
+          "tool_fee_per_call"
+        ],
+        "model": "openai/gpt-4o-mini",
+        "plan": "payg",
+        "provider": "openai",
+        "rates": {
+          "billed_output_per_million": {
+            "amount": "0.6",
+            "currency": "USD"
+          },
+          "cache_read_per_million": {
+            "amount": "0.075",
+            "currency": "USD"
+          },
+          "cache_write_per_million": null,
+          "tool_fee_per_call": null,
+          "uncached_input_per_million": {
+            "amount": "0.15",
+            "currency": "USD"
+          }
+        },
+        "record_id": "rec_f0e6faf210364cf79afd80dd94fd8c44",
+        "research_id": "rs_012903289ac34b66acb1d3507d1e3269",
+        "scope": {
+          "baseline_group": null,
+          "currency": "USD",
+          "function": "text",
+          "task_profile": null
+        },
+        "sources": [
+          {
+            "collector_kind": "manual_review",
+            "collector_name": "ac-public-catalog",
+            "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+            "kind": "reviewed_public",
+            "retrieved_at": "2026-10-08T13:58:41+08:00",
+            "source_url": "https://openrouter.ai/api/v1/models"
+          }
+        ],
+        "status": "ok",
+        "subscription": null
+      }
+    ],
+    "schema_version": 1,
+    "snapshot_id": "snap-1"
+  }
+}

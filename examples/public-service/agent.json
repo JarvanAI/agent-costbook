@@ -1,0 +1,31 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/capabilities/agents?agent_id=codex",
+    "body": null
+  },
+  "status": 200,
+  "headers": {
+    "date": "Thu, 08 Oct 2026 06:57:16 GMT",
+    "server": "uvicorn",
+    "etag": "\"8c1088c3bad859a0e4fb1a8364f1748f7acc1d98056b58c1680a8f6dae3648e2\"",
+    "cache-control": "public, max-age=300",
+    "content-length": "498",
+    "content-type": "application/json",
+    "Connection": "close"
+  },
+  "response": {
+    "agent_id": "codex",
+    "as_of": "2026-10-08T14:06:45+08:00",
+    "can_edit_files": true,
+    "can_use_tools": true,
+    "domain": "terminal coding agent",
+    "input_output_shape": "Terminal session in a repository; task text in, edits and command output out.",
+    "recorded_at": "2026-10-08T06:49:58.380349+00:00",
+    "row_version": 1,
+    "source": "official",
+    "source_ref": "https://developers.openai.com/codex/cli",
+    "strengths": "The Codex CLI page says a repository session can edit files and run local development tools.",
+    "unsuitable": null
+  }
+}

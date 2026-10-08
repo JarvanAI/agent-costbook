@@ -1,0 +1,23 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/research/rs_012903289ac34b66acb1d3507d1e3269",
+    "body": null
+  },
+  "status": 200,
+  "headers": {
+    "date": "Thu, 08 Oct 2026 06:57:16 GMT",
+    "server": "uvicorn",
+    "etag": "\"a8b25c9520a62ce17024375efae03c3b316a730b1aebce330bc5958142ebc771\"",
+    "cache-control": "public, max-age=300",
+    "content-length": "929",
+    "content-type": "application/json",
+    "Connection": "close"
+  },
+  "response": {
+    "contribution_id": "co_37f3880b8151476ca36f9bf729efd188",
+    "id": "rs_012903289ac34b66acb1d3507d1e3269",
+    "markdown": "First reviewed public snapshot. Human authorized this public-data boundary on 2026-10-08. Prices are OpenRouter channel metadata retrieved 2026-10-08T13:58:41+08:00, converted with Decimal times 1000000. They are not vendor-direct prices, paid invoices, or a license grant. Models whose token rates change by prompt length are listed as gaps. GPT-6.1 Sol effort names come from the OpenAI model page retrieved 2026-10-08T14:30:15+08:00 and have no price row. Benchmarks and private quotas are absent.\nGemini cache-write rates are omitted: explicit caching includes storage duration and implicit caching has different write semantics. Cursor and Gemini CLI file-editing support was verified separately in official documentation and source on 2026-10-08.\n",
+    "title": "Reviewed public OpenRouter text rates, 2026-10-08"
+  }
+}

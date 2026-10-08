@@ -1,0 +1,63 @@
+{
+  "request": {
+    "method": "POST",
+    "path": "/v1/estimates",
+    "body": {
+      "method": "M4",
+      "currency": "USD",
+      "usage": {
+        "uncached_input": "1000",
+        "cache_read": "0",
+        "cache_write": "0",
+        "billed_output": "400"
+      },
+      "extra_cost": "0",
+      "candidates": [
+        {
+          "candidate_id": "priced",
+          "provider": "openai",
+          "channel": "openrouter",
+          "model": "openai/gpt-4o-mini",
+          "plan": "payg",
+          "feature_scope": "text",
+          "agent_id": "codex"
+        },
+        {
+          "candidate_id": "price-gap",
+          "provider": "openai",
+          "channel": "openrouter",
+          "model": "openai/gpt-6.1-sol",
+          "plan": "payg",
+          "feature_scope": "text",
+          "agent_id": "codex",
+          "effort": "high"
+        }
+      ],
+      "private_rates": "PRIVATE_INPUT_MUST_NOT_ECHO"
+    }
+  },
+  "status": 422,
+  "headers": {
+    "date": "Thu, 08 Oct 2026 06:57:16 GMT",
+    "server": "uvicorn",
+    "cache-control": "no-store",
+    "content-length": "149",
+    "content-type": "application/json",
+    "Connection": "close"
+  },
+  "response": {
+    "error": {
+      "code": "invalid_public_request",
+      "details": [
+        {
+          "loc": [
+            "body",
+            "private_rates"
+          ],
+          "type": "extra_forbidden"
+        }
+      ],
+      "message": "The request is invalid."
+    }
+  }
+}

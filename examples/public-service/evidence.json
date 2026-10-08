@@ -1,0 +1,28 @@
+{
+  "request": {
+    "method": "GET",
+    "path": "/v1/evidence/ev_2d79f403ec004b90b3cc4b7beea86527",
+    "body": null
+  },
+  "status": 200,
+  "headers": {
+    "date": "Thu, 08 Oct 2026 06:57:16 GMT",
+    "server": "uvicorn",
+    "etag": "\"dbd9394d23ca98bee1eb6b242352556b808310d1a956cfc5fafed819bd9125db\"",
+    "cache-control": "public, max-age=300",
+    "content-length": "655",
+    "content-type": "application/json",
+    "Connection": "close"
+  },
+  "response": {
+    "collector_kind": "manual_review",
+    "collector_name": "ac-public-catalog",
+    "content": "OpenRouter public models metadata retrieved 2026-10-08T13:58:41+08:00. Channel openrouter, plan payg, scope text, currency USD. Per-token strings were multiplied by 1000000 with Decimal. Long-context overrides and the one-hour cache-write TTL are not flat rates.",
+    "content_sha256": "611e28dc30fc4260d8b71a3f39fe615967a400182036dd518c68dc1afb883e2d",
+    "contribution_id": "co_37f3880b8151476ca36f9bf729efd188",
+    "id": "ev_2d79f403ec004b90b3cc4b7beea86527",
+    "retrieved_at": "2026-10-08T13:58:41+08:00",
+    "source_kind": "reviewed_public",
+    "source_url": "https://openrouter.ai/api/v1/models"
+  }
+}
