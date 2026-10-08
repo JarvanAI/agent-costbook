@@ -33,7 +33,7 @@
 ## 仓库里的约定
 
 - 公共服务入口 `agent_costbook.public_api:create_public_app`，只读独立审核公开库。线上没有写 API、AI 或模型 key。不能把私有 live DB 切成公开模式。个人实付价、账号余额与本机资产属于 AR，不上传 AC。
-- `src/agent_costbook/public_catalog/catalog.sqlite3` 是唯一可公开打包的 SQLite；其他库仍保持忽略。更新复制上一正式公开库并保留 publisher/历史，运行时与镜像构建不重新生成数据。
+- `src/agent_costbook/public_catalog/catalog.sqlite3` 是唯一公开运行库；源码发行包保留既有合成测试 SQLite fixture，其他库不打包。更新复制上一正式公开库并保留 publisher/历史，运行时与镜像构建不重新生成数据。
 
 - 按 README 运行服务和 `uv run pytest -q`。
 - 密钥放在未跟踪的本地环境文件里，不写入仓库。

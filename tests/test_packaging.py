@@ -27,6 +27,7 @@ EXCLUDED_PARTS = frozenset({".docs", "hgit", ".worktree", ".git", ".venv", "priv
 SENTINELS = {
     "data/private/observations/sentinel.json": "private-observation-release-sentinel\n",
     "data/catalog.sqlite3": "local-database-release-sentinel\n",
+    "src/agent_costbook/local.sqlite3": "private-nested-database-sentinel\n",
     ".docs/private-contract.md": "local development contract\n",
     "hgit/ao/installation.json": "{}\n",
     ".worktree/receipt.json": "{}\n",
@@ -59,6 +60,9 @@ REQUIRED_SDIST_MEMBERS = (
 
 def _is_excluded_member(name: str) -> bool:
     parts = name.split("/")
+    relative = name.removeprefix(SDIST_PREFIX).removeprefix("src/")
+    if name.endswith((".sqlite", ".sqlite3", ".db")):
+        return relative not in {"agent_costbook/public_catalog/catalog.sqlite3", "tests/fixtures/ac-v0.2-sample.sqlite3"}
     return "data" in parts or ".env" in parts or any(part in EXCLUDED_PARTS for part in parts)
 
 
@@ -126,6 +130,10 @@ def test_sdist_and_wheel_keep_public_files_and_drop_seeded_local_files(tmp_path)
     assert leaked_sdist == []
     assert leaked_wheel == []
 
+    for resource in ("catalog.sqlite3", "manifest.json", "source.json"):
+        assert f"{SDIST_PREFIX}src/agent_costbook/public_catalog/{resource}" in sdist_names
+        assert f"agent_costbook/public_catalog/{resource}" in wheel_names
+
     assert "agent_costbook/__init__.py" in wheel_names
     metadata = [name for name in wheel_names if name.endswith(".dist-info/METADATA")]
     scripts = [name for name in wheel_names if name.endswith(".dist-info/entry_points.txt")]
@@ -178,6 +186,12 @@ def test_sdist_and_wheel_keep_public_files_and_drop_seeded_local_files(tmp_path)
     )
     assert version.returncode == 0, version.stderr
     assert version.stdout == "1.2.0"
+    startup = subprocess.run(
+        [str(python), "-c", "from agent_costbook.public_api import create_public_app; app = create_public_app(); assert app.state.manifest['reviewed'] is True"],
+        cwd=tmp_path, capture_output=True, text=True, check=False,
+        env={**os.environ, "PYTHONPATH": ""},
+    )
+    assert startup.returncode == 0, startup.stderr
     bindir = python.parent
     for command in (
         "ac",
