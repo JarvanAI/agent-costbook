@@ -249,7 +249,7 @@ def test_clean_install_contributes_publishes_estimates_and_exports(tmp_path):
         text=True,
     )
     assert build.returncode == 0, build.stderr
-    wheels = list(wheel_dir.glob("agent_costbook-1.1.0-*.whl"))
+    wheels = list(wheel_dir.glob("agent_costbook-1.2.0-*.whl"))
     assert len(wheels) == 1
     python = tmp_path / "venv" / "bin" / "python"
     venv = subprocess.run(["uv", "venv", str(tmp_path / "venv")], capture_output=True, text=True)
@@ -282,7 +282,7 @@ def test_clean_install_contributes_publishes_estimates_and_exports(tmp_path):
         env=env,
     )
     assert version.returncode == 0, version.stderr
-    assert version.stdout == "1.1.0"
+    assert version.stdout == "1.2.0"
 
     bindir = python.parent
     for command in (
@@ -299,7 +299,7 @@ def test_clean_install_contributes_publishes_estimates_and_exports(tmp_path):
     for binary in (bindir / "ac", bindir / "agent-costbook"):
         reported = _run([str(binary), "--version"], cwd=work, env=env)
         assert reported.returncode == 0, reported.stderr
-        assert reported.stdout.strip() == "1.1.0"
+        assert reported.stdout.strip() == "1.2.0"
 
     skill = (ROOT / "skills" / "costbook-contribute" / "SKILL.md").read_text(encoding="utf-8")
     for endpoint in (
@@ -326,7 +326,15 @@ def test_clean_install_contributes_publishes_estimates_and_exports(tmp_path):
     assert demo["results"][0]["metrics"] == {"cost": "0.0177", "currency": "USD"}
     assert _tree(home) | _tree(work) == before_demo
     assert not config.exists()
-    assert list(tmp_path.rglob("*.sqlite3")) == []
+    assert [
+        path
+        for path in tmp_path.rglob("*.sqlite3")
+        if not (
+            path.name == "catalog.sqlite3"
+            and path.parent.name == "public_catalog"
+            and path.parent.parent.name == "agent_costbook"
+        )
+    ] == []
 
     setup_result = _run([str(bindir / "ac"), "setup", "--config", str(config)], cwd=work, env=env)
     if setup_result.returncode != 0:
@@ -402,7 +410,7 @@ def test_clean_install_contributes_publishes_estimates_and_exports(tmp_path):
             assert FROZEN_PATHS <= paths
             assert all("research-job" not in path for path in paths)
             info = schema.json()["info"]
-            assert info["version"] == "1.1.0"
+            assert info["version"] == "1.2.0"
         with _bearer_scope(admin):
             created = _http_json(
                 "POST",

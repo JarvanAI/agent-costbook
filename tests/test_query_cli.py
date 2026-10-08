@@ -478,7 +478,9 @@ def test_capabilities_without_token_or_rejected_token_are_unauthorized(monkeypat
         captured = capsys.readouterr()
         assert captured.out == ""
         assert captured.err == "unauthorized\n"
-        assert receipts == []
+        assert len(receipts) == 1
+        assert receipts[0]["authorization"] is None
+        assert receipts[0]["path"] == "/v1/capabilities"
         _install_config(monkeypatch, server=base, read_token=READ)
         assert run_query(_query("model-efforts", server=base, provider="openai")) == 2
         captured = capsys.readouterr()
@@ -486,6 +488,7 @@ def test_capabilities_without_token_or_rejected_token_are_unauthorized(monkeypat
         assert captured.err == "unauthorized\n"
         assert READ not in captured.out
         assert READ not in captured.err
+        assert len(receipts) == 2
         assert receipts[-1]["authorization"] == f"Bearer {READ}"
 
 
@@ -515,6 +518,67 @@ def test_public_prices_do_not_send_a_token(monkeypatch, capsys):
         assert run_query(_query("prices", server=base)) == 0
         assert len(receipts) == 1
     _json_out(capsys)
+
+
+def test_public_capabilities_succeed_without_token_and_do_not_send_auth(monkeypatch, capsys):
+    agent_row = {
+        "agent_id": "public-agent",
+        "domain": "general",
+        "source": "public",
+        "as_of": "2026-10-08T00:00:00Z",
+        "row_version": 1,
+        "can_edit_files": True,
+        "can_use_tools": True,
+    }
+    effort_row = {
+        "provider": "openai",
+        "model": "gpt-5",
+        "effort": "high",
+        "source": "public",
+        "as_of": "2026-10-08T00:00:00Z",
+        "benchmarks": [{"name": "eval", "score": "95.5", "unit": "%"}],
+    }
+
+    def respond(receipt):
+        assert receipt["authorization"] is None
+        path, query = _query_parts(receipt["path"])
+        if path == "/v1/capabilities":
+            return 200, {"agents": [agent_row], "model_efforts": [effort_row]}, []
+        if path == "/v1/capabilities/agents":
+            return 200, agent_row, []
+        if path == "/v1/capabilities/model-efforts":
+            return 200, effort_row, []
+        return 404, {"detail": "not found"}, []
+
+    with served(respond) as (base, receipts):
+        _install_config(monkeypatch, server=base, read_token="", admin_token="")
+        assert run_query(_query("agents", server=base)) == 0
+        assert receipts[-1]["authorization"] is None
+        assert receipts[-1]["path"] == "/v1/capabilities"
+        out_agents, _ = _json_out(capsys)
+        assert out_agents == {"agents": [agent_row]}
+
+        assert run_query(_query("agents", server=base, agent_id="public-agent")) == 0
+        assert receipts[-1]["authorization"] is None
+        assert receipts[-1]["path"] == "/v1/capabilities/agents?agent_id=public-agent"
+        out_agent, _ = _json_out(capsys)
+        assert out_agent == agent_row
+
+        assert run_query(_query("model-efforts", server=base)) == 0
+        assert receipts[-1]["authorization"] is None
+        assert receipts[-1]["path"] == "/v1/capabilities"
+        out_efforts, _ = _json_out(capsys)
+        assert out_efforts == {"model_efforts": [effort_row]}
+
+        assert (
+            run_query(_query("model-efforts", server=base, provider="openai", model="gpt-5", effort="high"))
+            == 0
+        )
+        assert receipts[-1]["authorization"] is None
+        path, query = _query_parts(receipts[-1]["path"])
+        assert path == "/v1/capabilities/model-efforts"
+        out_effort, _ = _json_out(capsys)
+        assert out_effort == effort_row
 
 
 def test_evidence_and_research_preserve_api_bodies(monkeypatch, capsys):

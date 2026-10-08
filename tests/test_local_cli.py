@@ -161,11 +161,11 @@ def test_version_flag_and_command(tmp_path):
     named = _run(tmp_path / "home", ["version"])
     assert flagged.returncode == 0, flagged.stderr
     assert named.returncode == 0, named.stderr
-    assert flagged.stdout.strip() == "1.1.0"
-    assert named.stdout.strip() == "1.1.0"
+    assert flagged.stdout.strip() == "1.2.0"
+    assert named.stdout.strip() == "1.2.0"
     import agent_costbook
 
-    assert agent_costbook.__version__ == "1.1.0"
+    assert agent_costbook.__version__ == "1.2.0"
 
 
 def test_setup_repeat_keeps_original_config_bytes_and_database_rows(tmp_path):

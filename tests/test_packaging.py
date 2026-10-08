@@ -34,7 +34,7 @@ SENTINELS = {
     ".venv/pyvenv.cfg": "home = /nonexistent\n",
     ".env": "ACB_ADMIN_TOKEN=real-env-sentinel-not-for-release\n",
 }
-SDIST_PREFIX = "agent_costbook-1.1.0/"
+SDIST_PREFIX = "agent_costbook-1.2.0/"
 REQUIRED_SDIST_MEMBERS = (
     "src/agent_costbook/__init__.py",
     "tests/test_api.py",
@@ -109,8 +109,8 @@ def test_sdist_and_wheel_keep_public_files_and_drop_seeded_local_files(tmp_path)
         check=False,
     )
     assert build.returncode == 0, build.stderr
-    sdists = list(dist.glob("agent_costbook-1.1.0.tar.gz"))
-    wheels = list(dist.glob("agent_costbook-1.1.0-*.whl"))
+    sdists = list(dist.glob("agent_costbook-1.2.0.tar.gz"))
+    wheels = list(dist.glob("agent_costbook-1.2.0-*.whl"))
     assert len(sdists) == 1
     assert len(wheels) == 1
 
@@ -177,7 +177,7 @@ def test_sdist_and_wheel_keep_public_files_and_drop_seeded_local_files(tmp_path)
         check=False,
     )
     assert version.returncode == 0, version.stderr
-    assert version.stdout == "1.1.0"
+    assert version.stdout == "1.2.0"
     bindir = python.parent
     for command in (
         "ac",

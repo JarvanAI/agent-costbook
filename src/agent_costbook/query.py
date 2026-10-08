@@ -245,9 +245,9 @@ def _agents(args: argparse.Namespace, server: str, config: CliConfig, fmt: str) 
     agent_id = getattr(args, "agent_id", None)
     if agent_id is not None:
         path = "/v1/capabilities/agents?" + urlencode([("agent_id", agent_id)])
-        _present(_get(server, token, path, auth=True), fmt, "agent")
+        _present(_get(server, token, path, auth=bool(token)), fmt, "agent")
         return 0
-    body = _get(server, token, "/v1/capabilities", auth=True)
+    body = _get(server, token, "/v1/capabilities", auth=bool(token))
     agents = body.get("agents")
     if not isinstance(agents, list):
         raise DataError("response")
@@ -271,9 +271,9 @@ def _model_efforts(args: argparse.Namespace, server: str, config: CliConfig, fmt
         path = "/v1/capabilities/model-efforts?" + urlencode(
             [("provider", provider), ("model", model), ("effort", effort)]
         )
-        _present(_get(server, token, path, auth=True), fmt, "model_effort")
+        _present(_get(server, token, path, auth=bool(token)), fmt, "model_effort")
         return 0
-    body = _get(server, token, "/v1/capabilities", auth=True)
+    body = _get(server, token, "/v1/capabilities", auth=bool(token))
     rows = body.get("model_efforts")
     if not isinstance(rows, list):
         raise DataError("response")
