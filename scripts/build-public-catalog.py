@@ -67,7 +67,7 @@ def decimal_per_million(raw: str) -> str:
     return rendered or "0"
 
 
-def rates_from_raw(raw: dict) -> dict:
+def rates_from_raw(raw: dict, provider: str | None = None) -> dict:
     # A second context band or cache TTL cannot be selected by the current record key.
     if raw.get("overrides"):
         raise PublicDataError(
@@ -78,7 +78,9 @@ def rates_from_raw(raw: dict) -> dict:
     for raw_key, rate_key in _RATE_FIELDS:
         value = raw.get(raw_key)
         rates[rate_key] = None if value in (None, "") else decimal_per_million(str(value))
-    if raw.get("input_cache_write_1h") not in (None, ""):
+    # Gemini explicit caching includes time-based storage, while implicit
+    # caching has different write semantics. Neither is a universal flat bucket.
+    if provider == "google" or raw.get("input_cache_write_1h") not in (None, ""):
         rates["cache_write_per_million"] = None
     return rates
 
@@ -128,7 +130,7 @@ def _preflight_prices(source: dict) -> None:
                 "conditional_price",
                 "effort-specific prices are not a flat public rate",
             )
-        rates_from_raw(price.get("raw_pricing") or {})
+        rates_from_raw(price.get("raw_pricing") or {}, price.get("provider"))
 
 
 def _apply(store: Store, source: dict) -> None:
@@ -143,7 +145,7 @@ def _publish_prices(store: Store, source: dict) -> None:
     current = {_identity(row): row for row in store.catalog(None)}
     records = []
     for price in source["prices"]:
-        rates = rates_from_raw(price["raw_pricing"])
+        rates = rates_from_raw(price["raw_pricing"], price.get("provider"))
         record = _record(price, rates)
         existing = current.get(_identity(record))
         if existing is None:

@@ -1,10 +1,10 @@
 {
   "kind": "agent-costbook.public-source",
   "schema_version": 1,
-  "reviewed_at": "2026-10-08T14:31:00+08:00",
+  "reviewed_at": "2026-10-08T14:49:04+08:00",
   "research": {
     "title": "Reviewed public OpenRouter text rates, 2026-10-08",
-    "markdown": "First reviewed public snapshot. Human authorized this public-data boundary on 2026-10-08. Prices are OpenRouter channel metadata retrieved 2026-10-08T13:58:41+08:00, converted with Decimal times 1000000. They are not vendor-direct prices, paid invoices, or a license grant. Models whose token rates change by prompt length are listed as gaps. GPT-6.1 Sol effort names come from the OpenAI model page retrieved 2026-10-08T14:30:15+08:00 and have no price row. Benchmarks and private quotas are absent.\n"
+    "markdown": "First reviewed public snapshot. Human authorized this public-data boundary on 2026-10-08. Prices are OpenRouter channel metadata retrieved 2026-10-08T13:58:41+08:00, converted with Decimal times 1000000. They are not vendor-direct prices, paid invoices, or a license grant. Models whose token rates change by prompt length are listed as gaps. GPT-6.1 Sol effort names come from the OpenAI model page retrieved 2026-10-08T14:30:15+08:00 and have no price row. Benchmarks and private quotas are absent.\nGemini cache-write rates are omitted: explicit caching includes storage duration and implicit caching has different write semantics. Cursor and Gemini CLI file-editing support was verified separately in official documentation and source on 2026-10-08.\n"
   },
   "evidence": [
     {
@@ -267,26 +267,26 @@
     {
       "agent_id": "cursor",
       "source": "official",
-      "source_ref": "https://docs.cursor.com/agent",
-      "as_of": "2026-10-08T14:02:02+08:00",
+      "source_ref": "https://cursor.com/docs/agent/overview",
+      "as_of": "2026-10-08T14:49:04+08:00",
       "domain": "coding agent",
-      "strengths": "The retrieved docs index describes Plan Mode, diff review, and MCP. It does not state file editing.",
+      "strengths": "Official Agent documentation describes file editing, codebase search, and terminal execution.",
       "unsuitable": null,
-      "can_edit_files": null,
+      "can_edit_files": true,
       "can_use_tools": true,
-      "input_output_shape": "Docs index describes planning, diff review, and MCP. The edit surface is not stated."
+      "input_output_shape": "Editor Agent; prompts in, file edits and tool results out."
     },
     {
       "agent_id": "gemini-cli",
       "source": "official",
-      "source_ref": "https://github.com/google-gemini/gemini-cli",
-      "as_of": "2026-10-08T14:03:10+08:00",
+      "source_ref": "https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/tools/write-file.ts",
+      "as_of": "2026-10-08T14:49:04+08:00",
       "domain": "terminal agent for Gemini",
-      "strengths": "The Gemini CLI readme lists built-in file operations, shell commands, and MCP. Write access is not explicit.",
+      "strengths": "The official repository implements a write-file tool alongside shell and MCP tools.",
       "unsuitable": null,
-      "can_edit_files": null,
+      "can_edit_files": true,
       "can_use_tools": true,
-      "input_output_shape": "Terminal CLI; prompts in, file operations and shell commands out."
+      "input_output_shape": "Terminal CLI; prompts in, file edits and command output out."
     },
     {
       "agent_id": "antigravity",
@@ -772,6 +772,21 @@
       "id": "antigravity_overview",
       "url": "https://antigravity.google/docs/overview",
       "retrieved_at": "2026-10-08T14:04:32+08:00"
+    },
+    {
+      "id": "openrouter_caching",
+      "url": "https://openrouter.ai/docs/guides/best-practices/prompt-caching",
+      "retrieved_at": "2026-10-08T14:49:04+08:00"
+    },
+    {
+      "id": "cursor_edit_tools",
+      "url": "https://cursor.com/docs/agent/overview",
+      "retrieved_at": "2026-10-08T14:49:04+08:00"
+    },
+    {
+      "id": "gemini_cli_write_tool",
+      "url": "https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/tools/write-file.ts",
+      "retrieved_at": "2026-10-08T14:49:04+08:00"
     }
   ],
   "exclusions": [
@@ -870,6 +885,10 @@
     {
       "id": "x-ai/grok-4.3",
       "reason": "OpenRouter pricing.overrides changes token rates at 200000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "google_cache_write",
+      "reason": "Explicit cache writing includes storage duration; implicit caching has different write semantics. No universal cache-write token rate is published in this artifact."
     }
   ]
 }

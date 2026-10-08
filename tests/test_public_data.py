@@ -28,6 +28,28 @@ def _builder():
     return module
 
 
+def test_google_cache_write_is_not_a_flat_token_rate(tmp_path):
+    source = _mini_source()
+    source["prices"][0] = {
+        "provider": "google",
+        "model": "google/gemini-3.8-flash",
+        "raw_pricing": {
+            "prompt": "0.00000075",
+            "completion": "0.00000375",
+            "input_cache_read": "0.000000075",
+            "input_cache_write": "0.0000000416666666666667",
+        },
+    }
+    db, _manifest_path = _compile(source, tmp_path)
+    store = Store(db, readonly=True)
+    try:
+        row = next(row for row in store.catalog(None) if row["provider"] == "google")
+        assert row["rates"].get("cache_write_per_million") is None
+        assert row["rates"]["uncached_input_per_million"] == "0.75"
+    finally:
+        store.close()
+
+
 def _mini_source():
     """Two real OpenRouter text rates and one official agent. Not a synthetic card."""
     return {

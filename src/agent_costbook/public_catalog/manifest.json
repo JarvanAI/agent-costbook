@@ -5,7 +5,7 @@
     "prices": 17
   },
   "data_version": 1,
-  "database_sha256": "40b6bb14a815e8f5ff792ec051aa026bb44658edb7fef8f246eaed50d0f9d6d2",
+  "database_sha256": "a3af0ff91075301b8efbe3fe4ce48e9308872a609d5fb327f1bbd93b944fe9e2",
   "exclusions": [
     {
       "id": "license",
@@ -102,12 +102,16 @@
     {
       "id": "x-ai/grok-4.3",
       "reason": "OpenRouter pricing.overrides changes token rates at 200000 prompt tokens. The record key cannot select that band, so no flat rate is published."
+    },
+    {
+      "id": "google_cache_write",
+      "reason": "Explicit cache writing includes storage duration; implicit caching has different write semantics. No universal cache-write token rate is published in this artifact."
     }
   ],
   "kind": "agent-costbook.publication",
-  "publisher_id": "pub_be58824dab79454fa9760104ad277f01",
+  "publisher_id": "pub_008d3e8ddcc84a8a984064b9e1e3dd80",
   "reviewed": true,
-  "reviewed_at": "2026-10-08T14:31:00+08:00",
+  "reviewed_at": "2026-10-08T14:49:04+08:00",
   "schema_version": 1,
   "sources": [
     {
@@ -149,6 +153,21 @@
       "id": "antigravity_overview",
       "retrieved_at": "2026-10-08T14:04:32+08:00",
       "url": "https://antigravity.google/docs/overview"
+    },
+    {
+      "id": "openrouter_caching",
+      "retrieved_at": "2026-10-08T14:49:04+08:00",
+      "url": "https://openrouter.ai/docs/guides/best-practices/prompt-caching"
+    },
+    {
+      "id": "cursor_edit_tools",
+      "retrieved_at": "2026-10-08T14:49:04+08:00",
+      "url": "https://cursor.com/docs/agent/overview"
+    },
+    {
+      "id": "gemini_cli_write_tool",
+      "retrieved_at": "2026-10-08T14:49:04+08:00",
+      "url": "https://github.com/google-gemini/gemini-cli/blob/main/packages/core/src/tools/write-file.ts"
     }
   ]
 }
