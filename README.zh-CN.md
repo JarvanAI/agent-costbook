@@ -21,6 +21,16 @@ curl --fail http://127.0.0.1:8080/v1/info
 curl --fail http://127.0.0.1:8080/v1/capabilities
 ```
 
+或直接运行经检验的 [v1.2.0 Release](https://github.com/JarvanAI/agent-costbook/releases/tag/v1.2.0) 只读容器包（Linux `amd64`，只读根目录，无需凭据）：
+
+```sh
+curl --fail --location --remote-name https://github.com/JarvanAI/agent-costbook/releases/download/v1.2.0/agent-costbook-1.2.0-linux-amd64.docker.tar.gz
+curl --fail --location --remote-name https://github.com/JarvanAI/agent-costbook/releases/download/v1.2.0/agent-costbook-1.2.0-linux-amd64.docker.tar.gz.sha256
+sha256sum -c agent-costbook-1.2.0-linux-amd64.docker.tar.gz.sha256
+docker load -i agent-costbook-1.2.0-linux-amd64.docker.tar.gz
+docker run -d --name agent-costbook-public --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m -p 8080:8080 -e PORT=8080 agent-costbook:1.2.0
+```
+
 公开库覆盖 17 条 OpenRouter 通道报价、5 个 Agent、33 条 model-effort。返回 `public-reference`，不代表个人实付；缺 usage 不猜测。12 个模型的条件价暂未纳入计算，AA 数值与私有配额不随包公开。见[公开契约](docs/design/public-service-1.2/spec.md)、[真实来源与缺项](docs/research/public-catalog-20261008.md)、[Docker 与部署](docs/deployment.md)。本地管理服务仍支持原有鉴权与 M0–M7；公共服务只开放 M0–M6。
 
 ## 安装
@@ -32,11 +42,11 @@ curl --fail http://127.0.0.1:8080/v1/capabilities
 通过 Git 直接安装 `ac` 工具：
 
 ```sh
-uv tool install git+https://github.com/JarvanAI/agent-costbook.git@v1.1.0
+uv tool install git+https://github.com/JarvanAI/agent-costbook.git@v1.2.0
 ```
 
 > [!NOTE]
-> Git 安装方式已固定至验证过的发布标签 `@v1.1.0`。PyPI 待发布；当前使用上述 Git 安装命令。
+> Git 安装方式已固定至验证过的发布标签 `@v1.2.0`。PyPI 待发布；当前使用上述 Git 安装命令。
 
 安装后同时提供短命令 `ac` 与长命令别名 `agent-costbook`：
 
@@ -61,7 +71,7 @@ uv run pytest -q
 
 ```sh
 # 方式 A：通过 uvx 直接试玩（无需先安装到系统）
-uvx --from git+https://github.com/JarvanAI/agent-costbook.git@v1.1.0 ac demo
+uvx --from git+https://github.com/JarvanAI/agent-costbook.git@v1.2.0 ac demo
 
 # 方式 B：使用已安装的 ac CLI
 ac demo
@@ -197,6 +207,7 @@ flowchart LR
 - [数据来源与权利](docs/data-sources.md)：新鲜度、来源与公开/私有数据边界。
 - [贡献指南](CONTRIBUTING.md)：代码修改与数据纠正流程。
 - [安全政策](SECURITY.md)：本地运行与漏洞报告。
+- [1.2.0 公共服务发布说明](docs/releases/1.2.0.md)：1.2.0 公共参考服务与 Docker 发布说明。
 - [1.1.0 开发者体验发布说明](docs/releases/developer-experience-1.1.md)：1.1.0 GitHub 已发布；PyPI 待配置。
 - [源码发布说明](docs/releases/source-launch-20261002.md)：初始开源发布范围与验证记录。
 

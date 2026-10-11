@@ -21,6 +21,16 @@ curl --fail http://127.0.0.1:8080/v1/info
 curl --fail http://127.0.0.1:8080/v1/capabilities
 ```
 
+Or run the verified container from the [v1.2.0 Release](https://github.com/JarvanAI/agent-costbook/releases/tag/v1.2.0) bundle (Linux `amd64`, read-only root, no credentials):
+
+```sh
+curl --fail --location --remote-name https://github.com/JarvanAI/agent-costbook/releases/download/v1.2.0/agent-costbook-1.2.0-linux-amd64.docker.tar.gz
+curl --fail --location --remote-name https://github.com/JarvanAI/agent-costbook/releases/download/v1.2.0/agent-costbook-1.2.0-linux-amd64.docker.tar.gz.sha256
+sha256sum -c agent-costbook-1.2.0-linux-amd64.docker.tar.gz.sha256
+docker load -i agent-costbook-1.2.0-linux-amd64.docker.tar.gz
+docker run -d --name agent-costbook-public --read-only --tmpfs /tmp:rw,noexec,nosuid,size=64m -p 8080:8080 -e PORT=8080 agent-costbook:1.2.0
+```
+
 The reviewed artifact covers 17 OpenRouter price cards, 5 agents, and 33 model-effort rows. Estimates are `public-reference`, not personal paid costs; missing usage is never guessed. Conditional prices for 12 models remain gaps. AA scores and private quotas are excluded. See the [public contract](docs/design/public-service-1.2/spec.md), [sources and gaps](docs/research/public-catalog-20261008.md), and [Docker deployment](docs/deployment.md). The local admin service retains authentication and M0–M7; the public service exposes M0–M6.
 
 ## Installation
@@ -32,11 +42,11 @@ The reviewed artifact covers 17 OpenRouter price cards, 5 agents, and 33 model-e
 Install `ac` directly from Git:
 
 ```sh
-uv tool install git+https://github.com/JarvanAI/agent-costbook.git@v1.1.0
+uv tool install git+https://github.com/JarvanAI/agent-costbook.git@v1.2.0
 ```
 
 > [!NOTE]
-> Git installation is pinned to the verified release tag `@v1.1.0`. PyPI distribution is pending official publication; `uv tool install agent-costbook` will become available after the initial PyPI publication.
+> Git installation is pinned to the verified release tag `@v1.2.0`. PyPI distribution is pending official publication; `uv tool install agent-costbook` will become available after the initial PyPI publication.
 
 Both `ac` and the long-form alias `agent-costbook` are available:
 
@@ -61,7 +71,7 @@ Run a synthetic task cost estimate directly from your terminal. After installati
 
 ```sh
 # Option A: Run directly via uvx (without prior tool installation)
-uvx --from git+https://github.com/JarvanAI/agent-costbook.git@v1.1.0 ac demo
+uvx --from git+https://github.com/JarvanAI/agent-costbook.git@v1.2.0 ac demo
 
 # Option B: Run via installed ac CLI
 ac demo
@@ -197,6 +207,7 @@ flowchart LR
 - [Data sources and rights](docs/data-sources.md): freshness, provenance, and public versus private data.
 - [Contributing](CONTRIBUTING.md): code changes and data corrections.
 - [Security](SECURITY.md): local operation and vulnerability reports.
+- [Public service 1.2.0 notes](docs/releases/1.2.0.md): v1.2.0 public reference service and Docker release notes.
 - [Developer experience 1.1.0 notes](docs/releases/developer-experience-1.1.md): v1.1.0 GitHub release notes; PyPI pending.
 - [Source launch notes](docs/releases/source-launch-20261002.md): initial open source publication scope.
 

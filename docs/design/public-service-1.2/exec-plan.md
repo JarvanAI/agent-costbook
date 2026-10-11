@@ -52,7 +52,14 @@ flowchart TD
 - [x] 源码与协议独立复核，修正确认问题；整体`uv run --locked pytest -q`、build、doc/demo checks、镜像smoke与真实公开fixture。
 - [x] 服务minor版本1.2.0，API/schema保留1；版本期望与lock/打包入口一起更新，包保留旧CLI。
 - [x] 准备合同fixtures/OpenAPI、源与覆盖、新鲜度/缺项，先发AR可消费契约；URL未部署时明确null。
-- [ ] 合并/push并核实CI/发行。使用已有云账户授权时才实际部署；未授权继续可交代码/Docker，不标全部线上完成。保留工作区。
+- [x] 合并/push并核实CI/发行：功能发行对应 `5082858`，tag `v1.2.0` 与 main 的 [CI/Publish/Docker](https://github.com/JarvanAI/agent-costbook/actions) 工作流全部通过；[GitHub Release v1.2.0](https://github.com/JarvanAI/agent-costbook/releases/tag/v1.2.0) 已正式发布，附带 verified 镜像包资产与 sha256。公网部署仍待云账户授权（保持 pending，工作区保留 in-review）。
+
+## 已获得的运行与发布证据（2026-10-11 发布回执）
+
+- 功能发行对应 `5082858`，tag `v1.2.0`；GitHub Actions tag/main [CI、Publish、Docker 工作流](https://github.com/JarvanAI/agent-costbook/actions) 全部通过；全套 305 项原生测试通过，23 项真实 HTTP 检查通过。
+- 数据真实性与版本：公开库覆盖 17 价格 / 5 Agent / 33 model-effort，数据保持 `as_of: 2026-10-08`（不伪造 2026-10-11 新鲜度）。
+- Docker 发布与分发：GHCR publish 成功，但显式空 `DOCKER_CONFIG` 匿名拉取 manifest 返回 unauthorized（不宣称支持匿名 `docker pull`）；已将经本地完全一致验证的镜像 `sha256:5b999275044ccd89cdf8d2bc78b28fcc88eaaceb703899860c344f397c3170af`（linux/amd64）导出为公开 Release 资产包 `agent-costbook-1.2.0-linux-amd64.docker.tar.gz`（70,662,025 字节，sha256 `511fdced4e1b21b471c4524e0f40e0c510f07d025dbbec44a5e150c77ea66d0d`）及 `.sha256` 校验文件，成功上传至 [GitHub Release v1.2.0](https://github.com/JarvanAI/agent-costbook/releases/tag/v1.2.0)。
+- 部署与环境：暂无公网 HTTPS URL 及云账户授权，公网部署仍保持 pending；工作区保留 in-review 状态。
 
 ## 已获得的运行证据（2026-10-08）
 

@@ -23,7 +23,39 @@ The public reference service is designed for external agents (such as `agent-rou
 * Pinned dependency tool: `uv 0.10.9` (packaged via multi-stage binary copy).
 * Read-only container root support.
 
-### Building the Container
+### Running Pre-Built Release Container (Recommended)
+
+A pre-built, verified release container archive is published on GitHub Releases (Linux `amd64` currently verified). Anonymous `docker pull` from GitHub Container Registry (GHCR) returns unauthorized pending verification of public package visibility in package settings; this does not block running the verified Release bundle.
+
+Exact commands to download, verify checksum, load, tag, and run:
+
+```bash
+RELEASE_TAG="v1.2.0"
+ASSET_NAME="agent-costbook-1.2.0-linux-amd64.docker.tar.gz"
+BASE_URL="https://github.com/JarvanAI/agent-costbook/releases/download/${RELEASE_TAG}"
+
+# Download release container archive and sha256 checksum
+curl --fail --location --remote-name "${BASE_URL}/${ASSET_NAME}"
+curl --fail --location --remote-name "${BASE_URL}/${ASSET_NAME}.sha256"
+
+# Verify sha256 checksum before load (expected sha256: 511fdced4e1b21b471c4524e0f40e0c510f07d025dbbec44a5e150c77ea66d0d)
+sha256sum -c "${ASSET_NAME}.sha256"
+
+# Load the archive; its manifest restores the tag agent-costbook:1.2.0
+docker load -i "${ASSET_NAME}"
+
+
+# Run container read-only with ephemeral /tmp
+docker run -d \
+  --name agent-costbook-public \
+  --read-only \
+  --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+  -p 8080:8080 \
+  -e PORT=8080 \
+  agent-costbook:1.2.0
+```
+
+### Building the Container from Source
 From the repository root:
 ```bash
 docker build -t agent-costbook:latest .
@@ -158,14 +190,31 @@ The builder supports additions and revised facts, not retirement. Removing an ex
 
 ### Backup
 * All source facts JSON files and compiled SQLite release artifacts are version-controlled in Git.
-* Published Docker images in GHCR are identified by version tags and immutable image digests (e.g. `ghcr.io/jarvanai/agent-costbook:1.2.0`).
+* Container release archives (`agent-costbook-<version>-linux-amd64.docker.tar.gz`) and checksums (`.sha256`) are archived as immutable GitHub Release assets.
+* GHCR packages are tagged in CI by version and digest; note that anonymous GHCR pull currently returns unauthorized pending public package visibility, so backups and distributions do not rely on public GHCR pull.
 
 ### Rollback
-* **Docker / Self-Hosted**: Re-run the container pointing to the previous release tag:
+* **Docker / Self-Hosted**: Do not rely on anonymous `docker pull ghcr.io/...`. To roll back, fetch the verified Release bundle for the target release, verify checksum, load, tag, and restart:
   ```bash
-  docker run -d --read-only --tmpfs /tmp -p 8080:8080 ghcr.io/jarvanai/agent-costbook:1.2.0
+  RELEASE_TAG="v1.2.0"
+  ASSET_NAME="agent-costbook-1.2.0-linux-amd64.docker.tar.gz"
+  BASE_URL="https://github.com/JarvanAI/agent-costbook/releases/download/${RELEASE_TAG}"
+
+  curl --fail --location --remote-name "${BASE_URL}/${ASSET_NAME}"
+  curl --fail --location --remote-name "${BASE_URL}/${ASSET_NAME}.sha256"
+  sha256sum -c "${ASSET_NAME}.sha256"
+  docker load -i "${ASSET_NAME}"
+
+  docker stop agent-costbook-public && docker rm agent-costbook-public
+  docker run -d \
+    --name agent-costbook-public \
+    --read-only \
+    --tmpfs /tmp:rw,noexec,nosuid,size=64m \
+    -p 8080:8080 \
+    -e PORT=8080 \
+    agent-costbook:1.2.0
   ```
-  The example above applies after a later update: 1.2.0 is the first Docker release, and there is no 1.1.0 container to roll back to. Prefer a verified digest when pinning an image.
+  *(Note: 1.2.0 is the first Docker release, with no 1.1.0 container to roll back to. Future rollbacks use the corresponding release bundle path.)*
 * **Vercel**: In the Vercel Dashboard, go to the **Deployments** tab, find the previous successful deployment, and click **Instant Rollback**.
 
 ---
@@ -185,7 +234,7 @@ The builder supports additions and revised facts, not retirement. Removing an ex
 ## 7. Known Gaps & Unresolved Cloud Steps
 
 * **Cloud Credentials**: No Vercel or Cloudflare tokens are configured in the current environment. Automated cloud deployment cannot execute without human account provisioning.
-* **GHCR Package Visibility**: By default, GitHub Container Registry packages pushed from workflows are private. Public visibility cannot be claimed until receipt is verified by human administration: navigate to **GitHub -> Packages -> agent-costbook -> Package settings** and set visibility to **Public** to enable anonymous `docker pull`.
+* **GHCR Package Visibility & Anonymous Pull**: While GHCR publish succeeded in CI, manifest queries with an empty Docker credential configuration return unauthorized. Anonymous `docker pull` cannot be claimed until human administration enables public visibility in **GitHub -> Packages -> agent-costbook -> Package settings**. This does not block deployment because the self-contained Release bundle (`agent-costbook-1.2.0-linux-amd64.docker.tar.gz`) is publicly downloadable and verified.
 * **Public Service URL**: Currently **`null`** (no deployment claims made; unverified until an actual cloud deployment is provisioned by the account owner).
 
 ## Verification
