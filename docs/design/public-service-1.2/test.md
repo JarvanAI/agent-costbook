@@ -46,3 +46,21 @@
 - 固定publisher `pub_008d3e8ddcc84a8a984064b9e1e3dd80`，snap-1/version1；价格hash `cdd4d50d966bd81d439914021d5afa1d0a028490304b7e7fd43ea55a11f8ad6f`，能力hash `52121452c81c8de536d8e9e9f9d189f7c90e063789db1c543e8f151f3aec41d2`，数据库file hash `a3af0ff91075301b8efbe3fe4ce48e9308872a609d5fb327f1bbd93b944fe9e2`。
 - Grok与Sol6.1独立复核；重要项OpenAPI成功合同、更新撤去身份静默继承已修并复核。撤销尚未实现，缺旧身份即拒绝更新；文档明确范围。
 - 云账户尚未授权，公网URL、免费账户适用性与远端冷启动验证未完成。
+
+## 2026-10-11 消费者验收
+
+AC 侧独立逐字节核对 `info.json`、`catalog.json`、`capabilities.json`、
+`estimate.json`、`missing_usage.json`：与 AR 保留的五份回执副本完全一致。
+它们来自 10 月 8 日实际 public app 的 HTTP 响应，不是重新拼出的响应。
+
+AR 回报其匿名客户端已接受上述五份回执，核对价格与能力 hash，并验证
+固定快照及缺 usage 时仍可读取能力；生成回执的 replay 已进入 AR 离线测试。
+AC 侧同时读取了该定向测试：它只在临时 loopback HTTP server 重放回执，
+不联系在线 AC、模型 Provider 或 Jev。这是消费者协议证据，不是公网验收。
+
+AR 另回报已完成一次本地真实 Jev 推荐，保留目录中的 null effort，没有
+猜测 high/low 或成本 usage，也没有执行派遣。这项运行属于 AR 的本地验收；
+AC 未重跑该推荐，未接收其本机资产或私人账户数据，也不将其保存为模型评测。
+
+默认公网 URL 仍未配置，临时验收端口不作为发行配置。匿名 HTTPS、云端
+持久性与冷启动验收仍需实际部署后完成；GHCR 推送成功也不代表匿名可拉取。
